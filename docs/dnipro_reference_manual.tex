@@ -1,0 +1,2178 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{english}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{booktabs,longtable,array,tabularx,multirow}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{parskip}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black,
+    pdftitle={dnipro Reference Manual},
+    pdfauthor={dnipro project}
+}
+
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\texttt{dnipro} Reference Manual}
+\rhead{v0.1.0}
+\cfoot{\thepage}
+
+\lstdefinelanguage{spice}{
+    morekeywords={DC,SIN,PULSE,PWL,SQUARE,SAW},
+    morecomment=[l]{*},
+    morestring=[b]",
+    sensitive=false
+}
+
+\lstdefinestyle{code}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5},
+    rulecolor=\color{gray!40}
+}
+
+\lstdefinestyle{shell}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{black!4},
+    rulecolor=\color{gray!60}
+}
+
+\lstset{style=code}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+\newcommand{\project}{\texttt{dnipro}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\mna}{Modified Nodal Analysis}
+\newcommand{\sympy}{\texttt{SymPy}}
+\newcommand{\ngspice}{\texttt{ngspice}}
+\newcommand{\pyver}{Python~3.11+}
+
+% Signature box for API entries
+\newenvironment{apisig}{%
+  \begin{trivlist}\item\relax\ttfamily\small
+}{%
+  \end{trivlist}
+}
+
+\begin{document}
+
+% ============================================================
+% Title page
+% ============================================================
+\begin{titlepage}
+    \centering
+    \vspace*{20mm}
+    {\Huge\bfseries dnipro\par}
+    \vspace{8mm}
+    {\Large Symbolic Equation-Based MNA Framework\par}
+    \vspace{3mm}
+    {\large for SPICE-like Circuit Modeling in Python and SymPy\par}
+    \vspace{18mm}
+    {\Large\bfseries Reference Manual\par}
+    \vspace{5mm}
+    {\large Version 0.1.0\par}
+    \vfill
+    \begin{tabular}{ll}
+        Package name:            & \texttt{dnipro} \\
+        Implementation language: & Python 3.11+ \\
+        Core symbolic engine:    & SymPy \(\geq\) 1.14 \\
+        External verifier:       & ngspice (optional) \\
+        Entry point:             & \texttt{dnipro analyze} \\
+    \end{tabular}
+    \vfill
+    {\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+% PART I — USER GUIDE
+% ============================================================
+\part{User Guide}
+
+% ------------------------------------------------------------
+\section{Introduction}
+\label{sec:introduction}
+
+\project{} is a \pyver{} library and command-line tool for \emph{symbolic circuit analysis}
+based on equation-form \mna{} (MNA).
+Given a SPICE-like netlist, \project{} constructs an algebraic system of residual equations
+in \sympy{} symbolic form:
+\begin{equation}
+    F\!\left(x(t),\,\dot{x}(t),\,t,\,p\right) = 0,
+\end{equation}
+where \(x(t)\) collects node voltages and branch currents,
+\(\dot{x}(t)\) denotes their time derivatives,
+\(t\) is time, and \(p\) is the set of symbolic or numeric circuit parameters.
+
+\subsection{What dnipro is}
+
+\project{} is designed for use cases where the \emph{equations themselves} are the output:
+teaching circuit theory, generating symbolic transfer functions, preparing
+derivations for technical reports, or cross-checking hand analysis against a reference tool.
+The library exports residual equations as human-readable text, JSON (for downstream
+tooling), or LaTeX (for direct inclusion in documents). For linear systems it can
+also derive and report the classical algebraic MNA form \(A x = b\) and the
+time-domain descriptor form \(Gx + C\dot{x} = b\).
+
+\subsection{What dnipro is not}
+
+\project{} is not a SPICE replacement.
+It does not perform transient numerical integration, does not compute operating
+points automatically for nonlinear circuits, and does not claim full SPICE netlist
+compatibility.
+External \ngspice{} is used only as a verification oracle in integration tests
+and tutorial comparison artifacts. It is never required by the runtime library.
+
+\subsection{Relationship to the specification}
+
+The companion document \emph{SPEC\_dnipro\_v1\_symbolic\_mna\_framework} defines the
+version~1 requirements.
+This manual describes the implemented library and CLI as they exist in \project{}~0.1.0.
+
+\subsection{Relationship to the User's Guide}
+
+This reference manual is organized around the implemented API, syntax, CLI, and
+export formats. The companion document \emph{Dnipro User's Guide by Examples}
+is organized around runnable circuits in \code{examples/user\_guide}. Use the
+User's Guide when learning the system from concrete circuits, \project{} Python
+scripts, and matching \ngspice{} templates.
+
+% ------------------------------------------------------------
+\section{Installation and Setup}
+\label{sec:installation}
+
+\subsection{Requirements}
+
+\begin{itemize}[noitemsep]
+    \item Python 3.11 or later
+    \item \sympy{} 1.14 or later (installed automatically as a dependency)
+    \item \ngspice{} — optional; required only for integration tests marked
+          \code{@pytest.mark.ngspice}
+    \item NumPy --- optional; used by selected tutorial scripts for fast numeric
+          AC sweeps and comparison with \ngspice{} output.
+\end{itemize}
+
+\subsection{Installing from source}
+
+\begin{lstlisting}[style=shell]
+git clone <repository>
+cd dnipro
+pip install -e .
+\end{lstlisting}
+
+After installation the command \code{dnipro} is available on the \code{PATH}
+and the package \code{dnipro} is importable from Python.
+
+\subsection{Verifying the installation}
+
+\begin{lstlisting}[style=shell]
+dnipro --help
+python -c "import dnipro; print(dnipro.__version__)"
+\end{lstlisting}
+
+\subsection{Running the test suite}
+
+\begin{lstlisting}[style=shell]
+pip install pytest
+pytest
+\end{lstlisting}
+
+To include \ngspice{}-dependent integration tests:
+
+\begin{lstlisting}[style=shell]
+pytest -m ngspice
+\end{lstlisting}
+
+Tests marked \code{ngspice} are automatically skipped when the \ngspice{} binary
+is absent from \code{PATH}.
+
+% ------------------------------------------------------------
+\section{Quick Start}
+\label{sec:quickstart}
+
+\subsection{Example 1: Resistive voltage divider (time domain)}
+
+Create a netlist file \code{divider.cir}:
+
+\begin{lstlisting}[language=spice]
+* Resistive voltage divider
+V1 in 0 Vin
+R1 in out R1
+R2 out 0 R2
+\end{lstlisting}
+
+Analyze it:
+
+\begin{lstlisting}[style=shell]
+dnipro analyze divider.cir
+\end{lstlisting}
+
+Sample output:
+
+\begin{lstlisting}
+dnipro residual system
+domain: time
+nodes: in, out
+branch currents: V1
+unknowns:
+  [0] v_in(t)
+  [1] v_out(t)
+  [2] i_V1(t)
+residuals:
+  KCL(in): (v_in(t) - v_out(t))/R1 + i_V1(t) = 0
+  KCL(out): -(v_in(t) - v_out(t))/R1 + (v_out(t))/R2 = 0
+  V1: v_in(t) - Vin = 0
+\end{lstlisting}
+
+\subsection{Example 2: RC low-pass filter (Laplace domain)}
+
+\begin{lstlisting}[language=spice]
+* RC low-pass filter
+V1 in 0 Vin
+R1 in out R
+C1 out 0 C
+\end{lstlisting}
+
+\begin{lstlisting}[style=shell]
+dnipro analyze rc.cir --domain laplace --output latex
+\end{lstlisting}
+
+The output is a \LaTeX{} fragment containing the Laplace-domain residuals,
+suitable for inclusion in a report with \verb|\input{...}|.
+
+\subsection{Example 3: Numeric substitution}
+
+\begin{lstlisting}[style=shell]
+dnipro analyze rc.cir --domain laplace --numeric \
+    --param Vin=1 --param R=1k --param C=1u \
+    --output json
+\end{lstlisting}
+
+All three symbolic parameters (\code{Vin}, \code{R}, \code{C}) are substituted
+before export.
+If any required parameter is missing \project{} prints a clear error and exits with
+status~1.
+
+\subsection{Example 4: Classical linear MNA report}
+
+For a linear circuit, request the derived algebraic matrix form:
+
+\begin{lstlisting}[style=shell]
+dnipro analyze divider.cir --linear-system
+\end{lstlisting}
+
+Sample output includes row names, the unknown vector, the coefficient matrix,
+and the right-hand-side vector:
+
+\begin{lstlisting}
+dnipro linear MNA system
+domain: time
+form: A*x = b
+
+row names:
+  [0] KCL(in)
+  [1] KCL(out)
+  [2] V1
+
+unknown vector x:
+  [0] v_in(t)
+  [1] v_out(t)
+  [2] i_V1(t)
+
+A matrix:
+  [1/R1, -1/R1, 1]
+  [-1/R1, 1/R1 + 1/R2, 0]
+  [1, 0, 0]
+
+b vector:
+  [0]
+  [0]
+  [Vin]
+\end{lstlisting}
+
+\subsection{Example 5: Descriptor MNA report}
+
+For a time-domain linear circuit with reactive elements, request descriptor
+form:
+
+\begin{lstlisting}[style=shell]
+dnipro analyze rc.cir --descriptor-system --output latex
+\end{lstlisting}
+
+The output is a \LaTeX{} fragment containing the row mapping, unknown and
+derivative mapping, and displayed \(G\), \(C\), \(x\), \(\dot{x}\), and \(b\)
+objects for the equation \(Gx + C\dot{x} = b\).
+
+% ------------------------------------------------------------
+\section{Command-Line Interface}
+\label{sec:cli}
+
+\subsection{General form}
+
+\begin{lstlisting}[style=shell]
+dnipro analyze <netlist> [options]
+\end{lstlisting}
+
+\code{<netlist>} is the path to a SPICE-like netlist file (UTF-8 encoding).
+
+\subsection{Options}
+
+\begin{longtable}{p{0.32\textwidth}p{0.60\textwidth}}
+\toprule
+Option & Description \\
+\midrule
+\code{--domain \{time|laplace\}} &
+    Select the symbolic domain for equation construction.
+    Default: \code{time}. \\[4pt]
+\code{--numeric} &
+    Apply numeric substitution to all free parameters.
+    Must be combined with \code{--param} for each symbolic parameter present in the circuit.
+    Raises an error if any parameter is missing. \\[4pt]
+\code{--param NAME=VALUE} &
+    Supply or override a parameter value.
+    \code{NAME} must be a valid identifier; \code{VALUE} follows the same grammar
+    as netlist values (plain number, SPICE suffix, or single symbol).
+    May be repeated. \\[4pt]
+\code{--freq FREQ\_HZ} &
+    Substitute \(s = j2\pi f\) in Laplace-domain mode.
+    \code{FREQ\_HZ} is parsed as a netlist value. \\[4pt]
+\code{--omega OMEGA} &
+    Substitute \(s = j\omega\) in Laplace-domain mode.
+    \code{OMEGA} is parsed as a netlist value. \\[4pt]
+\code{--output \{text|json|latex\}} &
+    Select the output format. Default: \code{text}. \\[4pt]
+\code{--linear-system} &
+    Export a derived classical linear MNA system \(A x = b\) instead of the
+    residual equations. Available in both \code{time} and \code{laplace}
+    domains for systems linear in the unknown vector. \\[4pt]
+\code{--descriptor-system} &
+    Export the time-domain descriptor system \(Gx + C\dot{x} = b\). Mutually
+    exclusive with \code{--linear-system}; rejected in \code{laplace} domain. \\[4pt]
+\code{--formulas} &
+    Legacy alias; ignored in version~0.1.0. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Exit codes}
+
+\begin{longtable}{p{0.15\textwidth}p{0.77\textwidth}}
+\toprule
+Code & Meaning \\
+\midrule
+\code{0} & Analysis completed successfully; output written to stdout. \\
+\code{1} & An error occurred (parse error, missing parameter, file I/O error).
+           The error message is written to stderr. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Extended examples}
+
+\begin{lstlisting}[style=shell]
+# Time-domain text output (default)
+dnipro analyze circuit.cir
+
+# Laplace domain, JSON output
+dnipro analyze circuit.cir --domain laplace --output json
+
+# Frequency substitution at 1 kHz
+dnipro analyze filter.cir --domain laplace --freq 1k --output text
+
+# Angular frequency substitution
+dnipro analyze filter.cir --domain laplace --omega 6283.18 --output json
+
+# Full numeric substitution
+dnipro analyze rc.cir --domain time --numeric \
+    --param Vin=5 --param R=1k --param C=100n
+
+# Partial symbolic + LaTeX output
+dnipro analyze amp.cir --domain laplace --output latex
+
+# Classical linear MNA matrix/vector report
+dnipro analyze amp.cir --domain laplace --linear-system --output latex
+
+# Time-domain descriptor report
+dnipro analyze rc.cir --descriptor-system --output text
+\end{lstlisting}
+
+% ------------------------------------------------------------
+\section{Packaged Examples and Tutorials}
+\label{sec:packaged-examples}
+
+The repository includes small example circuits and report-generation scripts.
+These files are not required by the library API, but they are useful for checking
+the implemented conventions against concrete circuits.
+
+\subsection{\texttt{pub1}: small-signal VCCS example}
+
+The \code{pub1/} directory contains a compact small-signal equivalent circuit and
+ready-made matrix reports:
+
+\begin{longtable}{p{0.36\textwidth}p{0.56\textwidth}}
+\toprule
+File & Purpose \\
+\midrule
+\code{pub1/smallsig\_full.cir} &
+    Full \ngspice{}-style source netlist with \code{.param}, \code{.control},
+    and reporting commands. It is intended for \ngspice{}, not direct
+    \project{} parsing. \\
+\code{pub1/smallsig\_dnipro\_v1.cir} &
+    \project{} v1-compatible version of the same circuit. Use this file with
+    \code{dnipro analyze}. \\
+\code{pub1/smallsig\_mna\_matrices.py} &
+    Python helper that prints the residual system, \(A x = b\), descriptor
+    form, JSON, and \LaTeX{} fragments. \\
+\code{pub1/smallsig\_linear\_mna.tex} &
+    \LaTeX{} fragment for the classical linear \(A x = b\) report. \\
+\code{pub1/smallsig\_descriptor\_mna.tex} &
+    \LaTeX{} fragment for \(Gx + C\dot{x} = b\). For this purely resistive
+    small-signal circuit, \(C\) is the zero matrix. \\
+\code{pub1/*\_document.tex}, \code{pub1/*\_document.pdf} &
+    Complete wrapper documents and generated PDFs for the two \LaTeX{}
+    fragments. \\
+\bottomrule
+\end{longtable}
+
+Useful commands:
+
+\begin{lstlisting}[style=shell]
+dnipro analyze pub1/smallsig_dnipro_v1.cir --linear-system
+dnipro analyze pub1/smallsig_dnipro_v1.cir --descriptor-system
+python pub1/smallsig_mna_matrices.py
+\end{lstlisting}
+
+\subsection{MOSFET small-signal tutorial}
+
+The \code{tutorials/} directory contains a MOSFET small-signal equivalent model
+expressed as explicit linear small-signal elements. This is not a built-in
+MOSFET device model; it is a circuit-level equivalent built from supported
+\project{} v1 primitives.
+
+\begin{longtable}{p{0.40\textwidth}p{0.52\textwidth}}
+\toprule
+File & Purpose \\
+\midrule
+\code{tutorials/mosfet\_small\_signal.cir} &
+    Full \ngspice{} AC analysis netlist with \code{.param}, \code{.ac}, and
+    \code{.control}. \\
+\code{tutorials/mss.out} &
+    Captured \ngspice{} output containing AC sweep tables for \code{v(D)} and
+    \code{i(Vin)}. \\
+\code{tutorials/mosfet\_small\_signal\_dnipro.py} &
+    Builds the \project{} Laplace-domain residual system and classical
+    \(A x = b\) matrix for the same explicit small-signal equivalent. Optional
+    flags print \LaTeX{} or large symbolic transfer expressions. \\
+\code{tutorials/mosfet\_small\_signal\_numeric\_dnipro.py} &
+    Evaluates the extracted MNA matrix numerically at the same AC sweep
+    frequencies as \code{mss.out} and compares \code{v(D)} and \code{i(Vin)}
+    against \ngspice{}. \\
+\bottomrule
+\end{longtable}
+
+Symbolic matrix construction:
+
+\begin{lstlisting}[style=shell]
+python tutorials/mosfet_small_signal_dnipro.py
+python tutorials/mosfet_small_signal_dnipro.py --latex
+python tutorials/mosfet_small_signal_dnipro.py --solve
+\end{lstlisting}
+
+Numerical comparison against \ngspice{} output:
+
+\begin{lstlisting}[style=shell]
+python tutorials/mosfet_small_signal_numeric_dnipro.py
+python tutorials/mosfet_small_signal_numeric_dnipro.py --all
+\end{lstlisting}
+
+The numeric script substitutes the tutorial parameters, evaluates
+\(s = j2\pi f\), solves \(A(f)x=b\) for every frequency point, and reports the
+absolute difference between \project{} and \ngspice{} results. In the checked-in
+\code{mss.out} comparison, the observed maximum absolute differences are on the
+order of \(10^{-5}\) for \code{v(D)} and \(10^{-9}\) for \code{i(Vin)}, consistent
+with printed \ngspice{} output precision.
+
+% ------------------------------------------------------------
+\section{Netlist Syntax}
+\label{sec:syntax}
+
+\subsection{General rules}
+
+A netlist is a plain UTF-8 text file.
+Each non-empty, non-comment line defines one circuit element or model.
+Lines beginning with \code{*} are comments and are ignored.
+Blank lines are ignored.
+Fields on an element line are separated by whitespace.
+
+\subsection{Node names}
+
+The following names are ground aliases and are normalized to the
+internal ground node:
+
+\begin{center}
+\code{0} \quad \code{GND} \quad \code{gnd}
+\end{center}
+
+All other node names must match the identifier pattern
+\verb|[A-Za-z_][A-Za-z0-9_]*|.
+Node names are case-sensitive (except the three ground aliases above).
+The ground node is never included in the unknown vector.
+
+\subsection{Component names}
+
+A component name must match the pattern \verb|[A-Za-z][A-Za-z0-9_]*|.
+The first character determines the element type (case-insensitive).
+The original name is preserved in output.
+Duplicate component names in the same netlist are rejected.
+
+\subsection{Supported element lines}
+
+\begin{longtable}{p{0.06\textwidth}p{0.37\textwidth}p{0.47\textwidth}}
+\toprule
+Type & Syntax & Meaning \\
+\midrule
+R & \code{Rname np nm value} & Linear resistor. \\
+C & \code{Cname np nm value} & Linear capacitor. \\
+L & \code{Lname np nm value} & Linear inductor. \\
+V & \code{Vname np nm source} & Independent voltage source. \\
+I & \code{Iname np nm source} & Independent current source. \\
+E & \code{Ename np nm ncp ncm gain} & Voltage-controlled voltage source (VCVS). \\
+G & \code{Gname np nm ncp ncm gm} & Voltage-controlled current source (VCCS). \\
+F & \code{Fname np nm Vctrl gain} & Current-controlled current source (CCCS). \\
+H & \code{Hname np nm Vctrl rm} & Current-controlled voltage source (CCVS). \\
+D & \code{Dname anode cathode model} & Diode. \\
+.model & \code{.model name D(Is=\ldots{} n=\ldots{} Vt=\ldots{})} & Diode model definition. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Values}
+
+Version~1 accepts three kinds of values for component parameters:
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Plain numbers}: integers, decimals, or scientific notation.
+          Examples: \code{1}, \code{2.5}, \code{1e-6}, \code{-3.3e3}.
+    \item \textbf{Numbers with SPICE suffixes} (see Table~\ref{tab:suffixes}).
+          Examples: \code{1k}, \code{100n}, \code{25.85m}, \code{4.7u}.
+    \item \textbf{Single symbolic identifiers} matching
+          \verb|[A-Za-z_][A-Za-z0-9_]*|.
+          Examples: \code{R}, \code{C1val}, \code{Vin}, \code{gm}.
+\end{enumerate}
+
+Arbitrary expressions such as \code{R/2} or \code{C*(1+alpha)} are
+intentionally rejected in version~1.
+Python \code{eval()} is never used for parsing.
+Numeric values are represented as exact \sympy{} \code{Rational} objects.
+
+\begin{table}[H]
+\centering
+\caption{SPICE suffix scale factors}
+\label{tab:suffixes}
+\begin{tabular}{lll}
+\toprule
+Suffix & Scale & Example \\
+\midrule
+\code{f}   & \(10^{-15}\) & \code{1f}    \\
+\code{p}   & \(10^{-12}\) & \code{1p}    \\
+\code{n}   & \(10^{-9}\)  & \code{100n}  \\
+\code{u}   & \(10^{-6}\)  & \code{1u}    \\
+\code{m}   & \(10^{-3}\)  & \code{25.85m}\\
+\code{k}   & \(10^{3}\)   & \code{1k}    \\
+\code{meg} & \(10^{6}\)   & \code{1meg}  \\
+\code{g}   & \(10^{9}\)   & \code{1g}    \\
+\code{t}   & \(10^{12}\)  & \code{1t}    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The suffix \code{m} means milli (\(10^{-3}\)).
+Use \code{meg} for mega (\(10^{6}\)).
+Uppercase \code{M} is not recognized in version~1.
+
+\subsection{Diode model syntax}
+
+\begin{lstlisting}[language=spice]
+.model ModelName D(Is=value n=value Vt=value)
+\end{lstlisting}
+
+Exactly the three parameters \code{Is}, \code{n}, and \code{Vt} must be
+present (space-separated, not comma-separated).
+Each value follows the standard value grammar.
+Duplicate model names in the same netlist are rejected.
+
+% ------------------------------------------------------------
+\section{Source Functions}
+\label{sec:sources}
+
+Independent voltage (\code{V}) and current (\code{I}) sources accept
+a source specification as their last field(s).
+All source functions are converted to \sympy{} expressions of time \(t\)
+during parsing.
+
+\subsection{DC (constant)}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 value
+V1 in 0 DC(value)
+\end{lstlisting}
+
+Generates the constant expression \(f(t) = \textit{value}\).
+
+\subsection{SIN (sinusoidal)}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 SIN(offset amplitude omega)
+\end{lstlisting}
+
+Generates:
+\begin{equation}
+    f(t) = \textit{offset} + \textit{amplitude}\cdot\sin(\omega\, t).
+\end{equation}
+
+All three arguments are required.
+
+\subsection{PULSE}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 PULSE(v1 v2 delay rise_time fall_time width period)
+\end{lstlisting}
+
+All seven arguments are required (space-separated).
+Generates a periodic, trapezoid-shaped waveform using \sympy{} \code{Piecewise}
+and \code{floor}.
+Closed-form analytical solution of circuits driven by PULSE sources is not
+required in version~1.
+
+The periodic phase variable is:
+\begin{equation}
+    \tau = t - \textit{delay}
+           - \textit{period}\left\lfloor
+               \frac{t - \textit{delay}}{\textit{period}}
+             \right\rfloor.
+\end{equation}
+
+\subsection{PWL (piecewise linear)}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 PWL(t0 v0 t1 v1 t2 v2 ...)
+\end{lstlisting}
+
+At least two time/value pairs are required.
+Arguments must be given in pairs (even count); values are space-separated.
+Generates a \sympy{} \code{Piecewise} linear interpolation between the provided
+points. The source holds \(v_0\) for \(t \leq t_0\) and \(v_{n-1}\) for
+\(t > t_{n-1}\).
+
+\subsection{SQUARE (square wave)}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 SQUARE(offset amplitude omega duty)
+\end{lstlisting}
+
+All four arguments are required.
+\code{duty} is the duty cycle fraction in \((0, 1)\).
+Generates a periodic square wave using a normalized phase variable:
+\begin{equation}
+    \phi = \frac{\omega\,t}{2\pi}
+           - \left\lfloor\frac{\omega\,t}{2\pi}\right\rfloor \in [0,1).
+\end{equation}
+\begin{equation}
+    f(t) = \begin{cases}
+        \textit{offset} + \textit{amplitude} & \phi < \textit{duty}, \\
+        \textit{offset} - \textit{amplitude} & \text{otherwise.}
+    \end{cases}
+\end{equation}
+
+\subsection{SAW (sawtooth)}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 SAW(offset amplitude period)
+\end{lstlisting}
+
+All three arguments are required.
+Generates a periodic linear ramp:
+\begin{equation}
+    \tau = t - \textit{period}\left\lfloor\frac{t}{\textit{period}}\right\rfloor,
+    \qquad
+    f(t) = \textit{offset} + \textit{amplitude}\,\frac{\tau}{\textit{period}}.
+\end{equation}
+
+% ============================================================
+% PART II — MATHEMATICAL REFERENCE
+% ============================================================
+\part{Mathematical Reference}
+
+% ------------------------------------------------------------
+\section{MNA Theory}
+\label{sec:mna-theory}
+
+\subsection{Overview of Modified Nodal Analysis}
+
+\mna{} is a systematic method for formulating circuit equations.
+The standard MNA matrix form is
+\begin{equation}
+    G\,x(t) + C\,\dot{x}(t) = b(t),
+\end{equation}
+where \(G\) is the conductance matrix, \(C\) is the reactive (capacitive/inductive)
+matrix, and \(b(t)\) collects source contributions.
+
+\project{} does not use the matrix form as its primary representation.
+Instead it constructs the equivalent \emph{residual form}:
+\begin{equation}
+    F\!\left(x(t),\,\dot{x}(t),\,t,\,p\right) = 0.
+\end{equation}
+The residual form is more general: it accommodates nonlinear components (such as
+diodes) in the same framework without restructuring the solver.
+Linear matrix forms are special cases of the residual form.
+
+\subsection{Unknown vector}
+
+For a circuit with \(N\) non-ground nodes and \(B\) voltage-defined branches
+the unknown vector is:
+\begin{equation}
+    x(t) =
+    \begin{bmatrix}
+        v_{n_1}(t) \\ \vdots \\ v_{n_N}(t) \\
+        i_{b_1}(t) \\ \vdots \\ i_{b_B}(t)
+    \end{bmatrix}.
+\end{equation}
+
+In \emph{time-domain} mode, node voltages and branch currents are
+\sympy{} \code{Function} objects applied to the time symbol \(t\),
+e.g.\ \(v_{\mathrm{out}}(t)\) and \(i_{V1}(t)\).
+This enables \sympy{} \code{diff()} to generate symbolic derivatives.
+
+In \emph{Laplace-domain} mode, they are plain \sympy{} \code{Symbol} objects
+e.g.\ \(v_{\mathrm{out}}\) and \(i_{V1}\), with the complex frequency
+\(s = \texttt{Symbol("s")}\).
+
+The ordering is deterministic:
+\begin{enumerate}[noitemsep]
+    \item Non-ground node voltages in first-appearance order.
+    \item Branch current unknowns in first-appearance order of their components.
+\end{enumerate}
+
+\subsection{Residual vector}
+
+The residual vector \(F\) has the same length as \(x\).
+Its entries are ordered as:
+\begin{enumerate}[noitemsep]
+    \item One KCL residual per non-ground node, in node order.
+    \item One branch constraint residual per voltage-defined branch, in
+          component order.
+\end{enumerate}
+
+\subsection{KCL residuals}
+
+For each non-ground node \(n\), the KCL residual is formed as the
+algebraic sum of currents \emph{leaving} the node:
+\begin{equation}
+    F_n = \sum_k i_k^{(\mathrm{out})}(n) = 0.
+\end{equation}
+Here, \(i_k^{(\mathrm{out})}(n)\) is positive when current flows away from
+node~\(n\) through branch~\(k\).
+
+Internally, the builder maintains one accumulator per non-ground node.
+The operation \code{add\_current(np,~nm,~current)} adds \code{current} to
+node~\code{np} and subtracts it from node~\code{nm}.
+If either terminal is the ground node, no residual is created for ground.
+
+\subsection{Voltage-defined branches}
+
+The following elements introduce a branch-current unknown and a branch
+constraint residual:
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Element & Branch constraint \\
+\midrule
+Voltage source \code{V}  & \(v(np) - v(nm) - V_s = 0\) \\
+VCVS \code{E}            & \(v(np) - v(nm) - \mu[v(ncp)-v(ncm)] = 0\) \\
+CCVS \code{H}            & \(v(np) - v(nm) - r_m\,i_{ctrl} = 0\) \\
+Inductor \code{L}        & \(v(np) - v(nm) - L\,\dot{i}_L = 0\) (time) \\
+                         & \(v(np) - v(nm) - sL\,i_L = 0\) (Laplace) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+VCCS (\code{G}), CCCS (\code{F}), resistor (\code{R}), capacitor (\code{C}),
+current source (\code{I}), and diode (\code{D}) do \emph{not} introduce
+branch-current unknowns.
+
+\subsection{Reference direction conventions}
+
+For any two-terminal element written as \code{Xname np nm}:
+\begin{equation}
+    v_X = v(np) - v(nm),
+    \qquad
+    i_X: np \to nm \text{ (positive direction)}.
+\end{equation}
+
+For independent sources:
+\begin{itemize}[noitemsep]
+    \item A voltage source constrains \(v(np) - v(nm) = V_s\);
+          its branch current flows from \code{np} to \code{nm}.
+    \item A current source injects current \emph{from} \code{np} \emph{to} \code{nm}
+          through the external circuit.
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Component Equations}
+\label{sec:component-equations}
+
+\subsection{Resistor}
+
+For \code{R1 np nm R}, the current from \code{np} to \code{nm} is:
+\begin{equation}
+    i_R(t) = \frac{v(np,t) - v(nm,t)}{R}.
+\end{equation}
+No branch-current unknown is allocated.
+KCL contribution via \code{add\_current(np, nm, \(i_R\))}.
+
+\subsection{Capacitor}
+
+\textbf{Time domain.} For \code{C1 np nm C}:
+\begin{equation}
+    i_C(t) = C\,\frac{d}{dt}\bigl[v(np,t) - v(nm,t)\bigr].
+\end{equation}
+Implemented as \code{C * diff(voltage, t)}.
+
+\textbf{Laplace domain.} The admittance representation is used:
+\begin{equation}
+    i_C = sC\,\bigl[v(np) - v(nm)\bigr].
+\end{equation}
+No branch-current unknown in either domain.
+
+\subsection{Inductor}
+
+An inductor is treated as a voltage-defined branch in both domains.
+
+\textbf{Time domain.} For \code{L1 np nm L}:
+Branch current \(i_{L1}(t)\) is allocated.
+\begin{align}
+    \text{KCL}: & \quad i_{L1}(t) \text{ added from \code{np} to \code{nm},} \\
+    \text{Constraint}: & \quad v(np,t) - v(nm,t) - L\,\frac{di_{L1}(t)}{dt} = 0.
+\end{align}
+
+\textbf{Laplace domain.}
+\begin{align}
+    \text{KCL}: & \quad i_{L1} \text{ added from \code{np} to \code{nm},} \\
+    \text{Constraint}: & \quad v(np) - v(nm) - sL\,i_{L1} = 0.
+\end{align}
+
+\subsection{Voltage source}
+
+For \code{V1 np nm source}:
+Branch current \(i_{V1}(t)\) is allocated.
+\begin{align}
+    \text{KCL}: & \quad i_{V1}(t) \text{ added from \code{np} to \code{nm},} \\
+    \text{Constraint}: & \quad v(np,t) - v(nm,t) - f(t) = 0,
+\end{align}
+where \(f(t)\) is the source expression (DC, SIN, etc.).
+
+\subsection{Current source}
+
+For \code{I1 np nm source}:
+The source expression \(f(t)\) is added directly to KCL as current from
+\code{np} to \code{nm}.
+No branch-current unknown is allocated.
+
+\subsection{VCVS (E source)}
+
+For \code{E1 np nm ncp ncm mu}:
+Branch current \(i_{E1}(t)\) is allocated.
+\begin{align}
+    \text{KCL}: & \quad i_{E1}(t) \text{ added from \code{np} to \code{nm},} \\
+    \text{Constraint}: & \quad
+        v(np) - v(nm) - \mu\bigl[v(ncp) - v(ncm)\bigr] = 0.
+\end{align}
+
+\subsection{VCCS (G source)}
+
+For \code{G1 np nm ncp ncm gm}:
+The output current from \code{np} to \code{nm} is:
+\begin{equation}
+    i_G = g_m\,\bigl[v(ncp) - v(ncm)\bigr].
+\end{equation}
+No branch-current unknown is allocated.
+
+\subsection{CCCS (F source)}
+
+For \code{F1 np nm Vctrl beta}:
+The output current from \code{np} to \code{nm} is:
+\begin{equation}
+    i_F = \beta\,i_{\mathrm{Vctrl}}.
+\end{equation}
+\code{Vctrl} must be the name of an existing voltage-defined branch.
+No branch-current unknown is allocated for the \code{F} element itself.
+
+\subsection{CCVS (H source)}
+
+For \code{H1 np nm Vctrl rm}:
+Branch current \(i_{H1}\) is allocated.
+\begin{align}
+    \text{KCL}: & \quad i_{H1} \text{ added from \code{np} to \code{nm},} \\
+    \text{Constraint}: & \quad
+        v(np) - v(nm) - r_m\,i_{\mathrm{Vctrl}} = 0.
+\end{align}
+\code{Vctrl} must be the name of an existing voltage-defined branch.
+
+\subsection{Diode}
+
+For \code{D1 anode cathode Model}:
+The diode voltage is \(v_D = v(\text{anode}) - v(\text{cathode})\).
+The diode current from anode to cathode is the Shockley equation:
+\begin{equation}
+    i_D = I_S\!\left(\exp\!\left(\frac{v_D}{n\,V_T}\right) - 1\right),
+\end{equation}
+where \(I_S\), \(n\), \(V_T\) come from the named \code{.model} definition.
+The current \(i_D\) is added to KCL via \code{add\_current(anode, cathode, \(i_D\))}.
+No branch-current unknown is allocated.
+
+% ------------------------------------------------------------
+\section{Time Domain and Laplace Domain}
+\label{sec:domains}
+
+\subsection{Time-domain mode}
+
+Selected with \code{--domain time} (the default).
+
+Node voltages and branch currents are \sympy{} \code{Function} objects evaluated at
+\(t = \texttt{Symbol("t",~real=True)}\).
+For example, a node \code{out} gives the unknown \(v_{\mathrm{out}}(t)\).
+Time derivatives are formed with \texttt{sympy.diff(expr, t)}.
+
+Capacitor currents take the form \(C\,\dot{v}(t)\);
+inductor constraints include \(L\,\dot{i}_L(t)\).
+
+\subsection{Laplace-domain mode}
+
+Selected with \code{--domain laplace}.
+
+Node voltages and branch currents are plain \sympy{} \code{Symbol} objects.
+The complex frequency is \(s = \texttt{Symbol("s")}\).
+Capacitors contribute \(sC\,V\) and inductors use the constraint
+\(V - sL\,I = 0\).
+
+\subsection{Frequency substitution}
+
+Frequency substitution replaces \(s\) with a concrete complex value.
+It is only available in Laplace-domain mode.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Option & Substitution \\
+\midrule
+\code{--freq F}   & \(s \leftarrow j\,2\pi f\) \\
+\code{--omega W}  & \(s \leftarrow j\,\omega\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+After substitution, residuals are complex-valued \sympy{} expressions.
+The substitution is recorded in \code{ResidualSystem.metadata["frequency\_substitution"]}.
+
+% ------------------------------------------------------------
+\section{Nonlinear Component: Diode}
+\label{sec:diode}
+
+\subsection{Design restriction}
+
+Version~1 supports exactly one nonlinear component: the junction diode.
+The diode is handled inside the same residual system as all linear elements.
+There is no separate nonlinear backend.
+
+\subsection{What is not implemented}
+
+The following are explicitly out of scope for version~1:
+\begin{itemize}[noitemsep]
+    \item Jacobian matrix construction or export.
+    \item Newton-Raphson or any other nonlinear solver.
+    \item Automatic small-signal linearization.
+    \item BJT or MOSFET models.
+\end{itemize}
+
+If \code{--numeric} is applied to a circuit containing a diode,
+\project{} substitutes numerical parameter values into the symbolic residuals
+but does \emph{not} attempt to solve the resulting nonlinear system.
+
+\subsection{Model parameters}
+
+The diode model requires exactly three parameters:
+
+\begin{center}
+\begin{tabular}{llp{0.5\textwidth}}
+\toprule
+Parameter & Symbol & Meaning \\
+\midrule
+\code{Is} & \(I_S\) & Saturation current (A) \\
+\code{n}  & \(n\)   & Emission coefficient (dimensionless) \\
+\code{Vt} & \(V_T\) & Thermal voltage (V); typically \(\approx 25.85\,\text{mV}\) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Example}
+
+\begin{lstlisting}[language=spice]
+V1 in 0 Vin
+R1 in out R
+D1 out 0 Dmod
+.model Dmod D(Is=1e-14 n=1 Vt=25.85m)
+\end{lstlisting}
+
+The residual system (time domain) will contain:
+\begin{align}
+    F_{\mathrm{in}} &=
+        \frac{v_{\mathrm{in}}(t) - v_{\mathrm{out}}(t)}{R} + i_{V1}(t) = 0, \\
+    F_{\mathrm{out}} &=
+        \frac{v_{\mathrm{out}}(t) - v_{\mathrm{in}}(t)}{R}
+        + I_S\!\left(\exp\!\left(\frac{v_{\mathrm{out}}(t)}{n\,V_T}\right)-1\right) = 0, \\
+    F_{V1} &= v_{\mathrm{in}}(t) - V_{\mathrm{in}} = 0.
+\end{align}
+
+% ============================================================
+% PART III — LIBRARY API REFERENCE
+% ============================================================
+\part{Library API Reference}
+
+% ------------------------------------------------------------
+\section{Package Overview}
+\label{sec:package-overview}
+
+\subsection{Public API}
+
+The top-level package \code{dnipro} exports three convenience names:
+
+\begin{lstlisting}[language=Python]
+from dnipro import parse_netlist_file, parse_netlist_text, build_equations
+import dnipro
+print(dnipro.__version__)   # "0.1.0"
+\end{lstlisting}
+
+Additional public module-level APIs are documented in the sections below.
+Symbols not documented in this manual should be treated as internal.
+
+\subsection{Package structure}
+
+\begin{lstlisting}
+dnipro/
+  __init__.py            # public exports
+  errors.py              # exception hierarchy
+  parser/
+    netlist_parser.py    # parse_netlist_text, parse_netlist_file
+    value_parser.py      # parse_value
+    source_parser.py     # parse_source, source function classes
+  circuit/
+    circuit.py           # Circuit
+    components.py        # Component subclasses
+    models.py            # DiodeModel
+    nodes.py             # normalize_node, GROUND
+  mna/
+    equation_builder.py  # build_equations, ResidualSystemBuilder
+    linear_extraction.py # LinearSystem, DescriptorSystem, extraction functions
+    residual_system.py   # ResidualSystem
+  analysis/
+    substitutions.py     # substitution functions
+  export/
+    text_exporter.py     # residual, linear, and descriptor text exporters
+    json_exporter.py     # residual, linear, and descriptor JSON exporters
+    latex_exporter.py    # residual, linear, and descriptor LaTeX exporters
+  cli/
+    main.py              # main()
+\end{lstlisting}
+
+% ------------------------------------------------------------
+\section{Parser Module}
+\label{sec:api-parser}
+
+\subsection{\texttt{parse\_netlist\_text}}
+\label{api:parse_netlist_text}
+
+\begin{apisig}
+parse\_netlist\_text(text: str) -> Circuit
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.parser.netlist\_parser} (also exported from \code{dnipro})
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{text} --- the netlist as a string.
+\end{itemize}
+
+\textbf{Returns:} A \code{Circuit} object.
+
+\textbf{Raises:}
+\begin{itemize}[noitemsep]
+    \item \code{ParseError} --- on malformed element lines, invalid node or component names,
+          duplicate component names.
+    \item \code{UnsupportedElementError} --- on unsupported element type letters or
+          unsupported directives.
+    \item \code{UnsupportedValueError} --- on disallowed value syntax (e.g.\ expressions,
+          comma-separated source arguments).
+    \item \code{ModelError} --- on malformed \code{.model} lines, unsupported model types,
+          missing or extra model parameters, duplicate model names.
+\end{itemize}
+
+Comment lines (starting with \code{*}) and blank lines are silently ignored.
+
+\subsection{\texttt{parse\_netlist\_file}}
+\label{api:parse_netlist_file}
+
+\begin{apisig}
+parse\_netlist\_file(path: str) -> Circuit
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.parser.netlist\_parser} (also exported from \code{dnipro})
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{path} --- filesystem path to the netlist file (UTF-8).
+\end{itemize}
+
+\textbf{Returns:} A \code{Circuit} object.
+
+\textbf{Raises:} Same exceptions as \code{parse\_netlist\_text}; also
+\code{OSError} on file I/O failure.
+
+Thin wrapper around \code{parse\_netlist\_text}: reads the file and delegates.
+
+\subsection{\texttt{parse\_value}}
+\label{api:parse_value}
+
+\begin{apisig}
+parse\_value(raw: str) -> sympy.Expr
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.parser.value\_parser}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{raw} --- a value string; leading/trailing whitespace is stripped.
+\end{itemize}
+
+\textbf{Returns:} A \sympy{} expression: \code{Rational} for numeric values,
+\code{Symbol} for identifier values.
+
+\textbf{Raises:} \code{UnsupportedValueError} on empty input or disallowed syntax.
+
+Numeric values are represented as exact \sympy{} \code{Rational} objects
+(no floating-point rounding).
+
+\subsection{\texttt{parse\_source}}
+\label{api:parse_source}
+
+\begin{apisig}
+parse\_source(raw: str) -> SourceFunction
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.parser.source\_parser}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{raw} --- source specification string,
+          e.g.\ \code{"5"}, \code{"SIN(0 Vm omega)"}, \code{"PULSE(0 1 0 1n 1n 500n 1u)"}.
+\end{itemize}
+
+\textbf{Returns:} A frozen dataclass implementing the \code{SourceFunction} protocol.
+Call \code{.to\_sympy(t)} to obtain the \sympy{} expression.
+
+\textbf{Raises:} \code{UnsupportedValueError} on unsupported function names,
+wrong argument counts, or comma-separated arguments.
+
+The returned object's \code{.kind} attribute is one of
+\code{"DC"}, \code{"SIN"}, \code{"PULSE"}, \code{"PWL"}, \code{"SQUARE"}, \code{"SAW"}.
+
+% ------------------------------------------------------------
+\section{Data Model}
+\label{sec:api-data-model}
+
+\subsection{\texttt{Circuit}}
+\label{api:circuit}
+
+\begin{apisig}
+@dataclass \\
+class Circuit: \\
+\quad components: list[Component] \\
+\quad node\_order: list[str] \\
+\quad component\_names: set[str] \\
+\quad models: dict[str, DiodeModel]
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.circuit.circuit}
+
+Mutable container built incrementally by the parser.
+The \code{node\_order} list preserves first-appearance order (excluding ground).
+
+\textbf{Methods:}
+
+\begin{apisig}
+add\_component(component: Component) -> None
+\end{apisig}
+Appends \code{component} to \code{components}, records its name in
+\code{component\_names}, and extends \code{node\_order} with any new nodes.
+Raises \code{ParseError} on a duplicate component name.
+
+\begin{apisig}
+add\_model(model: DiodeModel) -> None
+\end{apisig}
+Adds \code{model} to \code{models} keyed by \code{model.name}.
+Raises \code{ModelError} on a duplicate model name.
+
+\subsection{Component classes}
+\label{api:components}
+
+All component classes are frozen dataclasses in \code{dnipro.circuit.components}.
+The base class is:
+
+\begin{apisig}
+@dataclass(frozen=True) \\
+class Component: \\
+\quad name: str   \# component name (preserved from netlist) \\
+\quad np: str     \# positive node (normalized) \\
+\quad nm: str     \# negative node (normalized)
+\end{apisig}
+
+Subclasses and their additional fields:
+
+\begin{longtable}{p{0.18\textwidth}p{0.72\textwidth}}
+\toprule
+Class & Additional fields \\
+\midrule
+\code{Resistor}      & \code{value: sympy.Expr} \\
+\code{Capacitor}     & \code{value: sympy.Expr} \\
+\code{Inductor}      & \code{value: sympy.Expr} \\
+\code{VoltageSource} & \code{source\_value: sympy.Expr}
+                       (already converted to SymPy via \code{parse\_source}) \\
+\code{CurrentSource} & \code{source\_value: sympy.Expr} \\
+\code{Diode}         & \code{model\_name: str} \\
+\code{VCVS}          & \code{ncp: str}, \code{ncm: str}, \code{gain: sympy.Expr} \\
+\code{VCCS}          & \code{ncp: str}, \code{ncm: str},
+                       \code{transconductance: sympy.Expr} \\
+\code{CCCS}          & \code{control\_branch: str}, \code{gain: sympy.Expr} \\
+\code{CCVS}          & \code{control\_branch: str},
+                       \code{transresistance: sympy.Expr} \\
+\bottomrule
+\end{longtable}
+
+The fields \code{ncp} and \code{ncm} of \code{VCVS} and \code{VCCS} are the
+positive and negative control nodes (normalized).
+The field \code{control\_branch} of \code{CCCS} and \code{CCVS} is the name
+of the voltage-defined branch whose current is sensed.
+
+\subsection{\texttt{DiodeModel}}
+\label{api:diodemodel}
+
+\begin{apisig}
+@dataclass(frozen=True) \\
+class DiodeModel: \\
+\quad name: str \\
+\quad saturation\_current: sympy.Expr \\
+\quad emission\_coefficient: sympy.Expr \\
+\quad thermal\_voltage: sympy.Expr
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.circuit.models}
+
+\subsection{\texttt{ResidualSystem}}
+\label{api:residualsystem}
+
+\begin{apisig}
+@dataclass(frozen=True) \\
+class ResidualSystem: \\
+\quad domain: str \\
+\quad unknowns: list[sympy.Expr] \\
+\quad residuals: list[sympy.Expr] \\
+\quad node\_order: list[str] \\
+\quad branch\_current\_order: list[str] \\
+\quad residual\_names: list[str] \\
+\quad metadata: dict
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.mna.residual\_system}
+
+A frozen, immutable value object.
+Analysis functions (\code{apply\_numeric\_substitutions},
+\code{apply\_frequency\_substitution}) do not modify this object;
+they return a new \code{ResidualSystem}.
+
+\textbf{Fields:}
+\begin{itemize}[noitemsep]
+    \item \code{domain} --- \code{"time"} or \code{"laplace"}.
+    \item \code{unknowns} --- ordered list of \sympy{} expressions,
+          length \(N + B\) (nodes then branch currents).
+    \item \code{residuals} --- ordered list of \sympy{} residual expressions,
+          same length as \code{unknowns}.
+    \item \code{node\_order} --- names of non-ground nodes in first-appearance order.
+    \item \code{branch\_current\_order} --- names of voltage-defined branches
+          in first-appearance order.
+    \item \code{residual\_names} --- human-readable labels for each residual,
+          e.g.\ \code{"KCL(out)"}, \code{"V1"}, \code{"L1"}.
+    \item \code{metadata} --- dictionary recording analysis history.
+          Keys used by the library: \code{"substitutions"} (from numeric substitution)
+          and \code{"frequency\_substitution"} (from frequency substitution).
+\end{itemize}
+
+The \(i\)-th unknown corresponds to the \(i\)-th residual.
+
+\subsection{Derived linear algebraic form}
+
+For residual systems that are linear in the unknown vector, \project{} can derive
+the classical matrix equation
+\begin{equation}
+    A x = b.
+\end{equation}
+The unknown vector \(x\) is exactly \code{ResidualSystem.unknowns}; no reordering
+is performed during extraction. The row order of \(A\) and \(b\) is exactly the
+order of \code{ResidualSystem.residuals}, and row labels are preserved through
+\code{ResidualSystem.residual\_names}.
+
+The extraction uses \sympy{} linear-equation utilities after replacing
+time-domain unknown functions such as \(v_{\mathrm{out}}(t)\) with temporary
+symbols. This makes the operation compatible with both time-domain and
+Laplace-domain \project{} residual systems.
+
+If a residual contains a nonlinear dependence on an unknown, for example the
+exponential current of a diode, extraction raises \code{NonlinearSystemError}.
+
+\subsection{Derived descriptor form}
+
+For time-domain linear systems, \project{} can also derive
+\begin{equation}
+    Gx(t) + C\dot{x}(t) = b(t),
+\end{equation}
+where
+\begin{equation}
+    \dot{x}(t) =
+    \begin{bmatrix}
+        \frac{d}{dt}x_0(t) & \cdots & \frac{d}{dt}x_{n-1}(t)
+    \end{bmatrix}^{T}.
+\end{equation}
+The derivative vector preserves the same order as \(x\). Capacitor terms
+contribute to \(C\) through voltage derivatives, and time-domain inductor branch
+constraints contribute through branch-current derivatives. Descriptor extraction
+is intentionally rejected for Laplace-domain systems because Laplace residuals
+are already algebraic in \(s\).
+
+% ------------------------------------------------------------
+\section{MNA Equation Builder}
+\label{sec:api-builder}
+
+\subsection{\texttt{build\_equations}}
+\label{api:build_equations}
+
+\begin{apisig}
+build\_equations(circuit: Circuit, domain: str = "time") -> ResidualSystem
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.mna.equation\_builder}
+(also exported from \code{dnipro})
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{circuit} --- a \code{Circuit} object returned by the parser.
+    \item \code{domain} --- \code{"time"} (default) or \code{"laplace"}.
+\end{itemize}
+
+\textbf{Returns:} A \code{ResidualSystem}.
+
+\textbf{Raises:}
+\begin{itemize}[noitemsep]
+    \item \code{UnsupportedElementError} --- on an unsupported domain string
+          or an unrecognized component type.
+    \item \code{ControlBranchError} --- when a CCCS or CCVS references a
+          control branch that is not a voltage-defined branch (i.e.\ the named
+          component does not appear in \code{branch\_current\_order}).
+    \item \code{ModelError} --- when a \code{Diode} component references a
+          model name not present in \code{circuit.models}.
+\end{itemize}
+
+This is the primary entry point for equation construction.
+Internally it creates a \code{ResidualSystemBuilder} and calls its \code{build()} method.
+
+\subsection{\texttt{ResidualSystemBuilder}}
+\label{api:builder}
+
+\begin{apisig}
+@dataclass \\
+class ResidualSystemBuilder: \\
+\quad circuit: Circuit \\
+\quad domain: str \\
+\quad time: sympy.Symbol        \# Symbol("t", real=True) \\
+\quad frequency: sympy.Symbol   \# Symbol("s")
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.mna.equation\_builder}
+
+Lower-level class used internally by \code{build\_equations}.
+Available for advanced use when components need to be added programmatically.
+
+\textbf{Methods:}
+
+\begin{apisig}
+node\_voltage(node\_name: str) -> sympy.Expr
+\end{apisig}
+Returns \code{Integer(0)} for the ground node.
+Returns a \code{Function} of \code{self.time} in time-domain mode,
+or a \code{Symbol} in Laplace-domain mode.
+
+\begin{apisig}
+branch\_current(component\_name: str) -> sympy.Expr
+\end{apisig}
+Returns or creates the branch-current unknown for the named component.
+Creates a \code{Function} of \code{self.time} or a \code{Symbol} depending
+on \code{self.domain}.
+
+\begin{apisig}
+add\_current(np: str, nm: str, current\_expr: sympy.Expr) -> None
+\end{apisig}
+Adds \code{current\_expr} to the KCL accumulator of node \code{np}
+and subtracts it from node \code{nm}.
+Ground nodes are silently skipped.
+
+\begin{apisig}
+add\_constraint(name: str, expr: sympy.Expr) -> None
+\end{apisig}
+Appends a branch constraint residual \code{expr = 0} labelled \code{name}.
+
+\begin{apisig}
+build() -> ResidualSystem
+\end{apisig}
+Processes all components in the circuit and returns the completed
+\code{ResidualSystem}.
+
+% ------------------------------------------------------------
+\section{Linear Extraction Module}
+\label{sec:api-linear-extraction}
+
+All functions are in \code{dnipro.mna.linear\_extraction}. They operate on an
+already-built \code{ResidualSystem} and return derived matrix views; the residual
+system remains the primary representation.
+
+\subsection{\texttt{LinearSystem}}
+\label{api:linearsystem}
+
+\begin{apisig}
+@dataclass(frozen=True) \\
+class LinearSystem: \\
+\quad matrix: sympy.Matrix \\
+\quad unknown\_vector: sympy.Matrix \\
+\quad rhs: sympy.Matrix \\
+\quad residual\_names: list[str] \\
+\quad metadata: dict
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.mna.linear\_extraction}
+
+Represents the derived algebraic system \(A x = b\).
+\code{matrix} is \(A\), \code{unknown\_vector} is \(x\), and \code{rhs} is \(b\).
+The metadata dictionary is copied from the source residual system and includes
+\code{"domain"}.
+
+\subsection{\texttt{DescriptorSystem}}
+\label{api:descriptorsystem}
+
+\begin{apisig}
+@dataclass(frozen=True) \\
+class DescriptorSystem: \\
+\quad conductance\_matrix: sympy.Matrix \\
+\quad dynamic\_matrix: sympy.Matrix \\
+\quad unknown\_vector: sympy.Matrix \\
+\quad derivative\_vector: sympy.Matrix \\
+\quad rhs: sympy.Matrix \\
+\quad residual\_names: list[str] \\
+\quad metadata: dict
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.mna.linear\_extraction}
+
+Represents the derived descriptor system \(Gx + C\dot{x} = b\).
+\code{conductance\_matrix} is \(G\), \code{dynamic\_matrix} is \(C\), and
+\code{derivative\_vector} is \(\dot{x}\). Convenience aliases
+\code{DescriptorSystem.G} and \code{DescriptorSystem.C} return the same matrices.
+
+\subsection{\texttt{extract\_linear\_system}}
+\label{api:extract_linear_system}
+
+\begin{apisig}
+extract\_linear\_system(system: ResidualSystem) -> LinearSystem
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{system} --- a residual system from \code{build\_equations} or an
+          analysis function.
+\end{itemize}
+
+\textbf{Returns:} A \code{LinearSystem} preserving the source unknown order and
+residual row labels.
+
+\textbf{Raises:} \code{NonlinearSystemError} if any residual is nonlinear in the
+unknown vector.
+
+\subsection{\texttt{extract\_descriptor\_system}}
+\label{api:extract_descriptor_system}
+
+\begin{apisig}
+extract\_descriptor\_system(system: ResidualSystem) -> DescriptorSystem
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{system} --- a time-domain residual system.
+\end{itemize}
+
+\textbf{Returns:} A \code{DescriptorSystem} preserving source unknown order,
+derivative order, and residual row labels.
+
+\textbf{Raises:}
+\begin{itemize}[noitemsep]
+    \item \code{NonlinearSystemError} if the system is not time-domain.
+    \item \code{NonlinearSystemError} if any residual is nonlinear in \(x\) or
+          \(\dot{x}\).
+\end{itemize}
+
+% ------------------------------------------------------------
+\section{Analysis Module}
+\label{sec:api-analysis}
+
+All functions are in \code{dnipro.analysis.substitutions}.
+None of them modify their input; each returns a new \code{ResidualSystem}.
+
+\subsection{\texttt{apply\_numeric\_substitutions}}
+\label{api:apply_numeric_substitutions}
+
+\begin{apisig}
+apply\_numeric\_substitutions( \\
+\quad system: ResidualSystem, \\
+\quad substitutions: Mapping[sympy.Symbol, sympy.Expr], \\
+) -> ResidualSystem
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{system} --- the input residual system.
+    \item \code{substitutions} --- a mapping from \sympy{} \code{Symbol} objects
+          to replacement \sympy{} expressions.
+          Typically built from CLI \code{--param} arguments via
+          \code{parse\_param\_assignments}.
+\end{itemize}
+
+\textbf{Returns:} A new \code{ResidualSystem} with residuals simplified after
+substitution. The \code{metadata["substitutions"]} key records the applied mapping.
+
+\textbf{Raises:} \code{MissingParameterError} if any free symbol (other than
+\code{t} and \code{s}) in the system is absent from \code{substitutions}.
+
+Uses \code{sympy.simplify} after substitution.
+The unknowns list is not modified.
+
+\subsection{\texttt{apply\_frequency\_substitution}}
+\label{api:apply_frequency_substitution}
+
+\begin{apisig}
+apply\_frequency\_substitution( \\
+\quad system: ResidualSystem, \\
+\quad *, \\
+\quad freq\_hz: sympy.Expr | None = None, \\
+\quad omega: sympy.Expr | None = None, \\
+) -> ResidualSystem
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{system} --- must have \code{domain == "laplace"}.
+    \item \code{freq\_hz} --- frequency in Hz; substitutes
+          \(s \leftarrow j\,2\pi f\).
+    \item \code{omega} --- angular frequency; substitutes
+          \(s \leftarrow j\,\omega\).
+\end{itemize}
+
+Exactly one of \code{freq\_hz} or \code{omega} must be provided.
+
+\textbf{Returns:} A new \code{ResidualSystem} with \(s\) replaced.
+Records \code{metadata["frequency\_substitution"]} with keys
+\code{"mode"}, \code{"value"}, and \code{"s"} (the substituted value).
+
+\textbf{Raises:} \code{UnsupportedValueError} if the domain is not
+\code{"laplace"} or if both or neither of \code{freq\_hz}/\code{omega} are given.
+
+\subsection{\texttt{collect\_parameter\_symbols}}
+\label{api:collect_parameter_symbols}
+
+\begin{apisig}
+collect\_parameter\_symbols(system: ResidualSystem) -> set[sympy.Symbol]
+\end{apisig}
+
+\textbf{Returns:} All free \sympy{} symbols found in \code{system.residuals} and
+\code{system.unknowns}, excluding the reserved independent variables
+\code{t} (\code{Symbol("t",~real=True)}) and \code{s} (\code{Symbol("s")}).
+
+Useful for determining which \code{--param} values are required before
+calling \code{apply\_numeric\_substitutions}.
+
+\subsection{\texttt{parse\_param\_assignment}}
+\label{api:parse_param_assignment}
+
+\begin{apisig}
+parse\_param\_assignment(raw: str) -> tuple[sympy.Symbol, sympy.Expr]
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{raw} --- a string of the form \code{"NAME=VALUE"}.
+\end{itemize}
+
+\textbf{Returns:} A tuple \code{(Symbol(NAME), parse\_value(VALUE))}.
+
+\textbf{Raises:} \code{UnsupportedValueError} on missing \code{=},
+invalid name, empty value.
+
+\subsection{\texttt{parse\_param\_assignments}}
+\label{api:parse_param_assignments}
+
+\begin{apisig}
+parse\_param\_assignments( \\
+\quad raw\_assignments: Iterable[str], \\
+) -> dict[sympy.Symbol, sympy.Expr]
+\end{apisig}
+
+\textbf{Parameters:}
+\begin{itemize}[noitemsep]
+    \item \code{raw\_assignments} --- iterable of \code{"NAME=VALUE"} strings
+          (e.g.\ the list of \code{--param} arguments from the CLI).
+\end{itemize}
+
+\textbf{Returns:} A dictionary mapping each \code{Symbol} to its replacement value.
+
+\textbf{Raises:} \code{UnsupportedValueError} on malformed assignments or duplicates.
+
+% ------------------------------------------------------------
+\section{Export Functions}
+\label{sec:api-export}
+
+\subsection{\texttt{export\_text}}
+\label{api:export_text}
+
+\begin{apisig}
+export\_text(system: ResidualSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.text\_exporter}
+
+Returns a human-readable multi-line string.
+The format is:
+
+\begin{lstlisting}
+dnipro residual system
+domain: <domain>
+nodes: <n1>, <n2>, ...
+branch currents: <c1>, <c2>, ...
+unknowns:
+  [0] <expr>
+  ...
+residuals:
+  <name>: <expr> = 0
+  ...
+metadata:
+  <key>: <value>
+  ...
+\end{lstlisting}
+
+Expressions are serialized with \code{sympy.sstr()} for stable output.
+The \code{metadata} block is omitted when the metadata dictionary is empty.
+
+\subsection{\texttt{export\_json}}
+\label{api:export_json}
+
+\begin{apisig}
+export\_json(system: ResidualSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.json\_exporter}
+
+Returns a JSON string with 2-space indentation.
+All \sympy{} expressions are serialized as strings via \code{sympy.sstr()}.
+
+Top-level keys (in output order):
+
+\begin{longtable}{p{0.30\textwidth}p{0.62\textwidth}}
+\toprule
+Key & Value \\
+\midrule
+\code{project}              & \code{"dnipro"} \\
+\code{domain}               & \code{"time"} or \code{"laplace"} \\
+\code{unknowns}             & list of expression strings \\
+\code{residual\_names}      & list of label strings \\
+\code{residuals}            & list of expression strings \\
+\code{node\_order}          & list of node name strings \\
+\code{branch\_current\_order} & list of branch name strings \\
+\code{metadata}             & nested object; SymPy values serialized to strings \\
+\bottomrule
+\end{longtable}
+
+\subsection{\texttt{export\_latex}}
+\label{api:export_latex}
+
+\begin{apisig}
+export\_latex(system: ResidualSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.latex\_exporter}
+
+Returns a \LaTeX{} source fragment (not a complete document).
+Uses \code{sympy.latex()} for mathematical notation.
+
+The fragment contains:
+\begin{itemize}[noitemsep]
+    \item \verb|\section*{dnipro residual system}| with domain.
+    \item \verb|\subsection*{Unknowns}| with an \code{align*} environment
+          listing \(x_i = \ldots\).
+    \item \verb|\subsection*{Residual Equations}| with an \code{align*} environment
+          listing \(F_i(\textit{name}) = \ldots = 0\).
+\end{itemize}
+
+Include it in a document with \verb|\input{output.tex}| or paste inline.
+
+\subsection{Linear and descriptor text exporters}
+\label{api:linear_descriptor_text_exporters}
+
+\begin{apisig}
+export\_linear\_text(system: LinearSystem) -> str \\
+export\_descriptor\_text(system: DescriptorSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.text\_exporter}
+
+Return human-readable reports for \(A x = b\) and \(Gx + C\dot{x} = b\).
+Both reports include the equation form, row-name mapping, unknown vector, matrix
+or matrices, and right-hand-side vector. Descriptor reports additionally include
+the derivative vector.
+
+\subsection{Linear and descriptor JSON exporters}
+\label{api:linear_descriptor_json_exporters}
+
+\begin{apisig}
+export\_linear\_json(system: LinearSystem) -> str \\
+export\_descriptor\_json(system: DescriptorSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.json\_exporter}
+
+Return JSON strings with stable \sympy{} \code{sstr()} serialization. Linear
+reports use keys \code{"form"}, \code{"unknowns"}, \code{"residual\_names"},
+\code{"matrix"}, \code{"rhs"}, and \code{"metadata"}. Descriptor reports use
+\code{"conductance\_matrix"}, \code{"dynamic\_matrix"}, and \code{"derivatives"}
+in addition to the common keys.
+
+\subsection{Linear and descriptor LaTeX exporters}
+\label{api:linear_descriptor_latex_exporters}
+
+\begin{apisig}
+export\_linear\_latex(system: LinearSystem) -> str \\
+export\_descriptor\_latex(system: DescriptorSystem) -> str
+\end{apisig}
+
+\textbf{Module:} \code{dnipro.export.latex\_exporter}
+
+Return \LaTeX{} source fragments using \code{sympy.latex()} for matrix and vector
+entries. Linear output contains row and unknown mapping tables plus displayed
+\(A\), \(x\), and \(b\). Descriptor output contains row mapping and
+unknown/derivative mapping tables plus displayed \(G\), \(C\), \(x\),
+\(\dot{x}\), and \(b\).
+
+% ------------------------------------------------------------
+\section{Error Hierarchy}
+\label{sec:errors}
+
+All \project{}-specific exceptions inherit from \code{DniproError}.
+Catching \code{DniproError} covers all library errors.
+
+\begin{lstlisting}[language=Python]
+DniproError(Exception)
+  ParseError(DniproError)
+    UnsupportedElementError(ParseError)
+    UnsupportedValueError(ParseError)
+  ModelError(DniproError)
+  ControlBranchError(DniproError)
+  MissingParameterError(DniproError)
+  NonlinearSystemError(DniproError)
+\end{lstlisting}
+
+\begin{longtable}{p{0.33\textwidth}p{0.59\textwidth}}
+\toprule
+Exception & When raised \\
+\midrule
+\code{DniproError}           & Base class; never raised directly. \\
+\code{ParseError}            & Malformed netlist line, invalid name, duplicate component. \\
+\code{UnsupportedElementError} & Unknown element type letter or unsupported directive. \\
+\code{UnsupportedValueError} & Disallowed value syntax, unsupported source function,
+                               comma-separated arguments, wrong argument count. \\
+\code{ModelError}            & Malformed \code{.model} line, unsupported model type,
+                               missing/extra model parameters, duplicate model name. \\
+\code{ControlBranchError}    & CCCS or CCVS control branch is not a voltage-defined branch. \\
+\code{MissingParameterError} & \code{--numeric} requested but one or more parameters
+                               are absent.
+                               \code{exc.missing} is a \code{tuple[str,~\ldots{}]} of
+                               missing symbol names. \\
+\code{NonlinearSystemError}  & Linear or descriptor extraction requested for a system
+                               that is nonlinear in the selected unknowns, or descriptor
+                               extraction requested outside time-domain mode. \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+% PART IV — ARCHITECTURE AND DEVELOPER GUIDE
+% ============================================================
+\part{Architecture and Developer Guide}
+
+% ------------------------------------------------------------
+\section{Architecture Overview}
+\label{sec:architecture}
+
+\subsection{Architectural principles}
+
+\begin{itemize}[noitemsep]
+    \item The equation builder is the core of the system; the CLI is a thin wrapper.
+    \item Parsers produce typed, immutable dataclass objects, not raw strings.
+    \item Component contribution is implemented via direct method calls on
+          the builder, not through virtual matrix stamps.
+    \item The primary internal representation is the residual system,
+          not a coefficient matrix.
+    \item No feature uses Python \code{eval()} on user-provided input.
+    \item \ngspice{} is used only in external verification tests,
+          never at runtime.
+\end{itemize}
+
+\subsection{Data flow}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=11mm,
+    box/.style={draw, rounded corners, align=center,
+                minimum width=42mm, minimum height=9mm, font=\small},
+    arrow/.style={-{Stealth[length=2mm]}, thick}
+]
+\node[box] (netlist)  {SPICE-like netlist\\\texttt{(.cir file)}};
+\node[box] (parser)   [below=of netlist]  {Parser\\(\texttt{netlist\_parser})};
+\node[box] (circuit)  [below=of parser]   {Circuit data model\\(\texttt{Circuit, Component})};
+\node[box] (builder)  [below=of circuit]  {Equation builder\\(\texttt{ResidualSystemBuilder})};
+\node[box] (system)   [below=of builder]  {Residual system\\$F(x,\dot{x},t,p)=0$};
+
+\node[box] (analysis) [below left=10mm and 20mm of system]
+                                           {Analysis\\(\texttt{substitutions})};
+\node[box] (linear)   [below=10mm of system]
+                                           {Linear extraction\\$Ax=b$, $Gx+C\dot{x}=b$};
+\node[box] (export)   [below right=10mm and 20mm of system]
+                                           {Export\\(text / JSON / \LaTeX{})};
+
+\draw[arrow] (netlist)  -- (parser);
+\draw[arrow] (parser)   -- (circuit);
+\draw[arrow] (circuit)  -- (builder);
+\draw[arrow] (builder)  -- (system);
+\draw[arrow] (system)   -- (analysis);
+\draw[arrow] (system)   -- (linear);
+\draw[arrow] (system)   -- (export);
+\draw[arrow] (linear)   -- (export);
+\draw[arrow] (analysis) -- ++(0,-10mm)
+    node[below, font=\small] {new \texttt{ResidualSystem}};
+\end{tikzpicture}
+\caption{dnipro data flow.}
+\label{fig:dataflow}
+\end{figure}
+
+\subsection{Module dependency graph}
+
+\begin{center}
+\begin{tabular}{lp{0.6\textwidth}}
+\toprule
+Module & Imports from \\
+\midrule
+\code{cli.main}            & \code{parser}, \code{mna}, \code{analysis}, \code{export} \\
+\code{mna.equation\_builder}  & \code{circuit.*}, \code{mna.residual\_system}, \code{errors} \\
+\code{mna.linear\_extraction} & \code{mna.residual\_system}, \code{errors} \\
+\code{parser.netlist\_parser} & \code{circuit.*}, \code{parser.value\_parser},
+                               \code{parser.source\_parser}, \code{errors} \\
+\code{analysis.substitutions} & \code{mna.residual\_system}, \code{parser.value\_parser},
+                               \code{errors} \\
+\code{export.*}            & \code{mna.residual\_system}, \code{mna.linear\_extraction} \\
+\code{circuit.*}           & \code{errors} \\
+\code{errors}              & (none) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------------
+\section{Adding a New Component}
+\label{sec:extending}
+
+To add a new two-terminal linear component \code{X} to version~1:
+
+\begin{enumerate}
+
+\item \textbf{Add a frozen dataclass} in \code{dnipro/circuit/components.py}:
+\begin{lstlisting}[language=Python]
+@dataclass(frozen=True)
+class XElement(Component):
+    value: sp.Expr
+\end{lstlisting}
+
+\item \textbf{Add a parser branch} in \code{dnipro/parser/netlist\_parser.py}:
+Add an \code{if element\_type == "X":} branch in \code{\_parse\_element\_line}
+and a helper \code{\_parse\_xelement} function following the pattern of
+\code{\_parse\_resistor}.
+
+\item \textbf{Implement the contribution method} in
+\code{dnipro/mna/equation\_builder.py}:
+Add \code{\_contribute\_xelement(self, component: XElement)} following the
+equations for the component.
+Use \code{self.add\_current(np, nm, expr)} for KCL contributions and
+\code{self.add\_constraint(name, expr)} for branch constraints.
+
+\item \textbf{Dispatch in \texttt{build()}}:
+Add an \code{elif isinstance(component, XElement):} branch in the
+\code{build()} method to call \code{\_contribute\_xelement}.
+
+\item \textbf{Write tests} covering:
+\begin{itemize}[noitemsep]
+    \item Parser: valid line, field-count errors, invalid values.
+    \item MNA builder: correct KCL residuals and constraints in both domains.
+    \item Use \code{sympy.simplify(actual - expected) == 0} for equation checks.
+\end{itemize}
+
+\end{enumerate}
+
+Voltage-defined branches additionally require:
+pre-allocating the branch current in the first pass of \code{build()}
+by adding \code{XElement} to the \code{isinstance} check:
+\begin{lstlisting}[language=Python]
+if isinstance(component, (VoltageSource, VCVS, CCVS, Inductor, XElement)):
+    self.branch_current(component.name)
+\end{lstlisting}
+
+% ------------------------------------------------------------
+\section{Testing Guide}
+\label{sec:testing}
+
+\subsection{Test structure}
+
+\begin{lstlisting}
+tests/
+  parser/
+    test_value_parser.py
+    test_source_parser.py
+    test_netlist_parser_rvi.py
+    test_netlist_parser_cl.py
+    test_netlist_parser_dependent_sources.py
+    test_netlist_parser_diode.py
+  mna/
+    test_equation_builder_rvi.py
+    test_equation_builder_cl.py
+    test_equation_builder_dependent_sources.py
+    test_equation_builder_diode.py
+    test_equation_builder_time_sources.py
+    test_equation_builder_laplace.py
+    test_linear_extraction.py
+    test_reference_circuit_coverage.py
+  analysis/
+    test_substitutions.py
+  export/
+    test_exporters.py
+    test_linear_system_exporters.py
+  circuit/
+    test_nodes.py
+  cli/
+    test_main.py
+  integration/
+    test_ngspice_verification.py
+\end{lstlisting}
+
+\subsection{Mathematical equivalence}
+
+Tests compare symbolic expressions using \sympy{} simplification:
+\begin{lstlisting}[language=Python]
+import sympy as sp
+
+def assert_equivalent(actual: sp.Expr, expected: sp.Expr) -> None:
+    assert sp.simplify(actual - expected) == 0
+\end{lstlisting}
+
+Output-format tests (JSON, text, LaTeX) may use exact string matching
+where stable formatting is intentionally verified.
+
+\subsection{ngspice integration tests}
+
+Tests in \code{tests/integration/} are decorated with
+\code{@pytest.mark.ngspice} and skipped when \ngspice{} is absent:
+\begin{lstlisting}[language=Python]
+import shutil, pytest
+
+@pytest.mark.ngspice
+@pytest.mark.skipif(
+    shutil.which("ngspice") is None,
+    reason="ngspice is not installed"
+)
+def test_dc_divider():
+    ...
+\end{lstlisting}
+
+Run them explicitly with \code{pytest -m ngspice}.
+
+\subsection{Current local health check}
+
+At the time this manual was updated, the project health check used:
+
+\begin{lstlisting}[style=shell]
+/home/konst/Documents/Projects/venv/bin/python -m pytest -q
+/home/konst/Documents/Projects/venv/bin/ruff check .
+/home/konst/Documents/Projects/venv/bin/python -m pytest --collect-only -q
+\end{lstlisting}
+
+The collected test count is 165 tests. The full test suite and Ruff check pass
+in the current repository state.
+
+% ============================================================
+% Appendix
+% ============================================================
+\appendix
+
+\section{Summary of Public API}
+\label{app:api-summary}
+
+\begin{longtable}{p{0.45\textwidth}p{0.47\textwidth}}
+\toprule
+Signature & Module \\
+\midrule
+\code{parse\_netlist\_text(text: str) -> Circuit}
+    & \code{dnipro} / \code{dnipro.parser.netlist\_parser} \\
+\code{parse\_netlist\_file(path: str) -> Circuit}
+    & \code{dnipro} / \code{dnipro.parser.netlist\_parser} \\
+\code{build\_equations(circuit, domain="time") -> ResidualSystem}
+    & \code{dnipro} / \code{dnipro.mna.equation\_builder} \\
+\code{extract\_linear\_system(system) -> LinearSystem}
+    & \code{dnipro.mna.linear\_extraction} \\
+\code{extract\_descriptor\_system(system) -> DescriptorSystem}
+    & \code{dnipro.mna.linear\_extraction} \\
+\code{export\_text(system) -> str}
+    & \code{dnipro.export.text\_exporter} \\
+\code{export\_json(system) -> str}
+    & \code{dnipro.export.json\_exporter} \\
+\code{export\_latex(system) -> str}
+    & \code{dnipro.export.latex\_exporter} \\
+\code{export\_linear\_text(system) -> str}
+    & \code{dnipro.export.text\_exporter} \\
+\code{export\_linear\_json(system) -> str}
+    & \code{dnipro.export.json\_exporter} \\
+\code{export\_linear\_latex(system) -> str}
+    & \code{dnipro.export.latex\_exporter} \\
+\code{export\_descriptor\_text(system) -> str}
+    & \code{dnipro.export.text\_exporter} \\
+\code{export\_descriptor\_json(system) -> str}
+    & \code{dnipro.export.json\_exporter} \\
+\code{export\_descriptor\_latex(system) -> str}
+    & \code{dnipro.export.latex\_exporter} \\
+\code{apply\_numeric\_substitutions(system, subs) -> ResidualSystem}
+    & \code{dnipro.analysis.substitutions} \\
+\code{apply\_frequency\_substitution(system, *, freq\_hz, omega) -> ResidualSystem}
+    & \code{dnipro.analysis.substitutions} \\
+\code{collect\_parameter\_symbols(system) -> set[Symbol]}
+    & \code{dnipro.analysis.substitutions} \\
+\code{parse\_param\_assignment(raw) -> tuple[Symbol, Expr]}
+    & \code{dnipro.analysis.substitutions} \\
+\code{parse\_param\_assignments(raws) -> dict[Symbol, Expr]}
+    & \code{dnipro.analysis.substitutions} \\
+\code{parse\_value(raw: str) -> sympy.Expr}
+    & \code{dnipro.parser.value\_parser} \\
+\code{parse\_source(raw: str) -> SourceFunction}
+    & \code{dnipro.parser.source\_parser} \\
+\bottomrule
+\end{longtable}
+
+\section{Reference Circuit Index}
+\label{app:reference-circuits}
+
+The following reference circuits are defined in the technical specification
+and are covered by tests in \code{tests/mna/test\_reference\_circuit\_coverage.py}
+and \code{tests/integration/test\_ngspice\_verification.py}.
+
+\begin{longtable}{p{0.12\textwidth}p{0.28\textwidth}p{0.50\textwidth}}
+\toprule
+ID & Circuit & Test purpose \\
+\midrule
+TDD-CIR-001 & Voltage divider          & Basic KCL, voltage source constraint. \\
+TDD-CIR-002 & RC low-pass              & Capacitor time derivative. \\
+TDD-CIR-003 & RC high-pass             & Floating capacitor, non-ground nodes. \\
+TDD-CIR-004 & RL low-pass              & Inductor branch current. \\
+TDD-CIR-005 & RLC low-pass             & Second-order dynamics. \\
+TDD-CIR-006 & Current-driven RC        & Current source sign convention. \\
+TDD-CIR-007 & VCVS amplifier           & E source constraint. \\
+TDD-CIR-008 & VCCS transconductance    & G source current direction. \\
+TDD-CIR-009 & CCCS current gain        & F source, sensing branch. \\
+TDD-CIR-010 & CCVS transresistance     & H source constraint. \\
+TDD-CIR-011 & SIN voltage source RC    & Time-dependent V source. \\
+TDD-CIR-012 & SIN current source RC    & Time-dependent I source. \\
+TDD-CIR-013 & Pulse-driven RC          & PULSE source formula. \\
+TDD-CIR-014 & PWL-driven RC            & PWL parser and formula. \\
+TDD-CIR-015 & Diode with resistor      & Nonlinear residual formula. \\
+\bottomrule
+\end{longtable}
+
+\section{Version History}
+\label{app:changelog}
+
+\begin{longtable}{p{0.15\textwidth}p{0.75\textwidth}}
+\toprule
+Version & Changes \\
+\midrule
+0.1.0 & Initial release.
+        Supported elements: R, C, L, V, I, E, G, F, H, D.
+        Source functions: DC, SIN, PULSE, PWL, SQUARE, SAW.
+        Domains: time, Laplace.
+        Exports: text, JSON, LaTeX.
+        Linear reporting: residual form, \(A x = b\), and descriptor
+        \(Gx + C\dot{x} = b\).
+        CLI: \texttt{dnipro analyze}, \texttt{--linear-system},
+        \texttt{--descriptor-system}.
+        Documentation includes \code{pub1} matrix reports and MOSFET
+        small-signal tutorial verification against \ngspice{} output. \\
+\bottomrule
+\end{longtable}
+
+\end{document}

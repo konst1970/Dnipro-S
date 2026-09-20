@@ -1,0 +1,1269 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{english}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+
+\usepackage{amsmath,amssymb,amsfonts,mathtools}
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black,
+    pdftitle={Dnipro User's Guide by Examples},
+    pdfauthor={dnipro project}
+}
+
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\texttt{dnipro} User's Guide}
+\rhead{v0.1.0}
+\cfoot{\thepage}
+
+\lstdefinelanguage{spice}{
+    morekeywords={DC,AC,SIN,PULSE,PWL,SQUARE,SAW,op,run,print,quit},
+    morecomment=[l]{*},
+    morecomment=[l]{.},
+    morestring=[b]",
+    sensitive=false
+}
+
+\lstdefinestyle{basecode}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5},
+    rulecolor=\color{gray!40}
+}
+
+\lstdefinestyle{python}{
+    style=basecode,
+    language=Python
+}
+
+\lstdefinestyle{spice}{
+    style=basecode,
+    language=spice
+}
+
+\lstdefinestyle{shell}{
+    style=basecode,
+    backgroundcolor=\color{black!4},
+    rulecolor=\color{gray!60}
+}
+
+\lstdefinestyle{textout}{
+    style=basecode,
+    backgroundcolor=\color{blue!3},
+    rulecolor=\color{blue!30}
+}
+
+\lstset{style=basecode}
+
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+\newcommand{\project}{\texttt{dnipro}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\sympy}{\texttt{SymPy}}
+\newcommand{\ngspice}{\texttt{ngspice}}
+\newcommand{\mna}{Modified Nodal Analysis}
+\newcommand{\examplesroot}{\path{../examples/user_guide}}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{20mm}
+    {\Huge\bfseries Dnipro User's Guide\par}
+    \vspace{6mm}
+    {\Large\bfseries By Examples\par}
+    \vspace{12mm}
+    {\large Symbolic equation-based MNA for SPICE-like circuits\par}
+    \vspace{18mm}
+    {\large Version 0.1.0\par}
+    \vfill
+    \begin{tabular}{ll}
+        Package name: & \project \\
+        Implementation language: & Python 3.11+ \\
+        Symbolic engine: & \sympy \\
+        Optional reference simulator: & \ngspice \\
+        Example root: & \examplesroot \\
+    \end{tabular}
+    \vfill
+    {\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Purpose and Scope}
+
+This guide demonstrates \project{} through runnable examples. Each example is
+backed by files in \path{examples/user_guide}: a \project{} netlist, a runnable
+\ngspice{} template, and a Python script that exercises the current public API.
+
+The guide is intentionally example-driven. It is not a replacement for the
+reference manual. The reference manual describes the implemented API surface;
+this document shows how that API behaves on concrete circuits and how the
+resulting symbolic systems map to standard \mna{} notation.
+
+\subsection{What the examples demonstrate}
+
+\begin{itemize}[noitemsep]
+    \item Residual equation construction \(F(x,\dot{x},t,p)=0\).
+    \item Classical linear extraction \(A x = b\) where the residuals are linear
+          in the unknown vector.
+    \item Time-domain descriptor extraction \(Gx + C\dot{x} = b\).
+    \item Laplace-domain linear systems \(A(s)x=b\).
+    \item Numeric and frequency substitution using exact \sympy{} numbers.
+    \item Nonlinear residual construction for the diode model.
+    \item Expected API errors for unsupported transformations.
+\end{itemize}
+
+\subsection{Repository layout}
+
+Every example directory uses the same structure:
+
+\begin{lstlisting}[style=textout]
+examples/user_guide/NN_example_name/
+  dnipro.cir    # dnipro-compatible symbolic netlist
+  ngspice.cir   # runnable numeric ngspice template
+  run.py        # Python script using the dnipro API
+\end{lstlisting}
+
+Run a Python example from the repository root:
+
+\begin{lstlisting}[style=shell]
+/home/konst/Documents/Projects/venv/bin/python examples/user_guide/01_voltage_divider/run.py
+\end{lstlisting}
+
+Run the matching \ngspice{} template:
+
+\begin{lstlisting}[style=shell]
+ngspice -b examples/user_guide/01_voltage_divider/ngspice.cir
+\end{lstlisting}
+
+\section{Conventions}
+
+\subsection{SPICE-compatible directions}
+
+\project{} follows the SPICE convention for voltage and current directions.
+For a voltage source
+
+\begin{lstlisting}[style=spice]
+V1 nplus nminus value
+\end{lstlisting}
+
+the source voltage is \(v(nplus)-v(nminus)\). The branch-current unknown
+\(i_{V1}\) follows the current direction through the source from the first node
+to the second node.
+
+For a current source
+
+\begin{lstlisting}[style=spice]
+I1 nplus nminus value
+\end{lstlisting}
+
+the source current is defined from the first node to the second node. In KCL
+residuals, \project{} writes currents leaving each node as positive. Therefore a
+source \code{I1 out 0 Iin} contributes \(+I_{in}\) to the KCL residual at
+\code{out}.
+
+\subsection{Unknown ordering}
+
+The unknown vector always lists node voltages first, in parser insertion order,
+followed by branch currents in first-appearance order. In time domain, unknowns
+are \sympy{} functions such as \(v_{out}(t)\). In Laplace domain, unknowns are
+plain symbols such as \(v_{out}\).
+
+\subsection{Residual, linear, and descriptor forms}
+
+The primary representation is the residual system
+
+\begin{equation}
+    F(x,\dot{x},t,p)=0.
+\end{equation}
+
+If the residuals are algebraically linear in \(x\), \project{} can derive
+
+\begin{equation}
+    A x = b.
+\end{equation}
+
+For linear time-domain systems with derivatives, \project{} can derive the
+descriptor form
+
+\begin{equation}
+    Gx + C\dot{x} = b.
+\end{equation}
+
+Classical \(A x=b\) extraction is not the right time-domain view when residuals
+contain derivatives such as \(\frac{d}{dt}v_{out}(t)\). Use descriptor form in
+time domain, or use Laplace domain to obtain \(A(s)x=b\).
+
+\section{Shared Python Helpers}
+
+All example scripts import the shared helper module:
+
+\lstinputlisting[style=python]{../examples/user_guide/common.py}
+
+The helpers are deliberately thin wrappers around the public \project{} API:
+
+\begin{itemize}[noitemsep]
+    \item \code{parse\_netlist\_file};
+    \item \code{build\_equations};
+    \item \code{extract\_linear\_system};
+    \item \code{extract\_descriptor\_system};
+    \item the text exporters.
+\end{itemize}
+
+\section{Example 1: Voltage Divider}
+\label{sec:ex-voltage-divider}
+
+This example is the smallest useful linear circuit. It demonstrates resistor
+KCL, voltage-source branch current allocation, residual reporting, and
+classical \(A x=b\) extraction.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/01_voltage_divider/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/01_voltage_divider/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/01_voltage_divider/run.py}
+
+\subsection{Symbolic system}
+
+The unknown vector is
+
+\begin{equation}
+    x =
+    \begin{bmatrix}
+        v_{in}(t) \\
+        v_{out}(t) \\
+        i_{V1}(t)
+    \end{bmatrix}.
+\end{equation}
+
+The residual equations are
+
+\begin{align}
+    \frac{v_{in}-v_{out}}{R_1} + i_{V1} &= 0, \\
+    \frac{v_{out}-v_{in}}{R_1} + \frac{v_{out}}{R_2} &= 0, \\
+    v_{in} - V_{in} &= 0.
+\end{align}
+
+Since the system is linear in \(x\), \project{} extracts
+
+\begin{equation}
+    A =
+    \begin{bmatrix}
+        \frac{1}{R_1} & -\frac{1}{R_1} & 1 \\
+        -\frac{1}{R_1} & \frac{1}{R_1}+\frac{1}{R_2} & 0 \\
+        1 & 0 & 0
+    \end{bmatrix},
+    \quad
+    b =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        V_{in}
+    \end{bmatrix}.
+\end{equation}
+
+With \(V_{in}=10\), \(R_1=R_2=1\,\mathrm{k}\Omega\), the \ngspice{} template
+reports \(v(out)=5\,\mathrm{V}\). The sign of \(i(v1)\) follows \ngspice{}'s
+source-current convention.
+
+\section{Example 2: Current Source Direction}
+\label{sec:ex-current-source-direction}
+
+This example isolates the SPICE current-source direction convention.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/02_current_source_direction/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/02_current_source_direction/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/02_current_source_direction/run.py}
+
+\subsection{Symbolic system}
+
+The source \code{I1 out 0 Iin} defines current from \code{out} to ground.
+Because \project{} writes KCL as a sum of currents leaving the node, the residual
+is
+
+\begin{equation}
+    I_{in} + \frac{v_{out}}{R} = 0.
+\end{equation}
+
+The extracted scalar system is
+
+\begin{equation}
+    A = \begin{bmatrix}\frac{1}{R}\end{bmatrix},
+    \quad
+    x = \begin{bmatrix}v_{out}(t)\end{bmatrix},
+    \quad
+    b = \begin{bmatrix}-I_{in}\end{bmatrix}.
+\end{equation}
+
+For \(I_{in}=1\,\mathrm{mA}\) and \(R=1\,\mathrm{k}\Omega\), the operating point
+is \(v(out)=-1\,\mathrm{V}\). This negative voltage is expected: a positive
+current source from \code{out} to ground removes current from the node.
+
+\section{Example 3: RC Time-Domain Descriptor System}
+\label{sec:ex-rc-time-descriptor}
+
+This example introduces a capacitor and therefore a time derivative. The primary
+time-domain report is the residual system, and the matrix view is the descriptor
+form \(Gx + C\dot{x}=b\).
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/03_rc_time_descriptor/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/03_rc_time_descriptor/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/03_rc_time_descriptor/run.py}
+
+\subsection{Residual equations}
+
+The unknown vector is
+
+\begin{equation}
+    x =
+    \begin{bmatrix}
+        v_{in}(t) \\
+        v_{out}(t) \\
+        i_{V1}(t)
+    \end{bmatrix},
+    \quad
+    \dot{x} =
+    \begin{bmatrix}
+        \dot{v}_{in}(t) \\
+        \dot{v}_{out}(t) \\
+        \dot{i}_{V1}(t)
+    \end{bmatrix}.
+\end{equation}
+
+The residual equations are
+
+\begin{align}
+    \frac{v_{in}-v_{out}}{R} + i_{V1} &= 0, \\
+    \frac{v_{out}-v_{in}}{R} + C\frac{d v_{out}}{dt} &= 0, \\
+    v_{in} - V_{in} &= 0.
+\end{align}
+
+\subsection{Descriptor matrix}
+
+\project{} extracts
+
+\begin{equation}
+    G =
+    \begin{bmatrix}
+        \frac{1}{R} & -\frac{1}{R} & 1 \\
+        -\frac{1}{R} & \frac{1}{R} & 0 \\
+        1 & 0 & 0
+    \end{bmatrix},
+    \quad
+    C =
+    \begin{bmatrix}
+        0 & 0 & 0 \\
+        0 & C & 0 \\
+        0 & 0 & 0
+    \end{bmatrix},
+    \quad
+    b =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        V_{in}
+    \end{bmatrix}.
+\end{equation}
+
+The nonzero \(C_{2,2}\) entry comes from the capacitor current
+\(C\,d v_{out}/dt\). Classical \(A x=b\) extraction is not used here because the
+time-domain residuals contain derivatives.
+
+\section{Example 4: RC Low-Pass in Laplace Domain}
+\label{sec:ex-rc-laplace}
+
+The same RC circuit can be built in Laplace domain. In that mode the capacitor
+contribution becomes the algebraic admittance \(sC\), and the circuit has a
+classical linear system \(A(s)x=b\).
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/04_rc_laplace/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/04_rc_laplace/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/04_rc_laplace/run.py}
+
+\subsection{Laplace-domain matrix}
+
+The unknown vector is
+
+\begin{equation}
+    x =
+    \begin{bmatrix}
+        v_{in} \\
+        v_{out} \\
+        i_{V1}
+    \end{bmatrix}.
+\end{equation}
+
+The extracted matrix is
+
+\begin{equation}
+    A(s) =
+    \begin{bmatrix}
+        \frac{1}{R} & -\frac{1}{R} & 1 \\
+        -\frac{1}{R} & \frac{1}{R}+sC & 0 \\
+        1 & 0 & 0
+    \end{bmatrix},
+    \quad
+    b =
+    \begin{bmatrix}
+        0 \\
+        0 \\
+        V_{in}
+    \end{bmatrix}.
+\end{equation}
+
+The example script also demonstrates frequency substitution:
+
+\begin{align}
+    s &= j\omega, \\
+    s &= j2\pi f.
+\end{align}
+
+For \code{--freq 50}, \project{} records \(s = 100j\pi\) in the residual system
+metadata.
+
+\section{Example 5: Nonlinear Diode Residual}
+\label{sec:ex-diode-nonlinear}
+
+This example demonstrates the nonlinear diode component. The circuit is
+symbolically supported as a residual system, but it is intentionally rejected by
+classical linear extraction.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/08_diode_nonlinear/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/08_diode_nonlinear/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/08_diode_nonlinear/run.py}
+
+\subsection{Nonlinear residual}
+
+The unknown vector is
+
+\begin{equation}
+    x =
+    \begin{bmatrix}
+        v_{in}(t) \\
+        v_{out}(t) \\
+        i_{V1}(t)
+    \end{bmatrix}.
+\end{equation}
+
+The diode current is
+
+\begin{equation}
+    i_D =
+    I_s\left(\exp\!\left(\frac{v_{out}}{nV_t}\right)-1\right).
+\end{equation}
+
+The residual equations are
+
+\begin{align}
+    \frac{v_{in}-v_{out}}{R} + i_{V1} &= 0, \\
+    \frac{v_{out}-v_{in}}{R}
+        + I_s\left(\exp\!\left(\frac{v_{out}}{nV_t}\right)-1\right) &= 0, \\
+    v_{in} - V_{in} &= 0.
+\end{align}
+
+\subsection{Expected linear extraction error}
+
+This residual system is nonlinear in \(v_{out}\). Calling
+\code{extract\_linear\_system} therefore raises \code{NonlinearSystemError}.
+This is expected behavior: \project{} has built the correct symbolic nonlinear
+system, but it does not pretend that the system can be represented as a
+classical linear \(A x=b\) matrix.
+
+The example script also applies exact numeric substitutions:
+
+\begin{lstlisting}[style=textout]
+Vin=5, R=1k, Is=1e-14, n=1, Vt=25.85m
+\end{lstlisting}
+
+These values are parsed into exact \sympy{} numbers before substitution.
+
+\section{Example 6: Voltage Source Direction}
+\label{sec:ex-voltage-source-direction}
+
+The previous examples used a voltage source from a named node to ground. This
+example reverses the source terminals and demonstrates the resulting sign in
+the voltage constraint.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/09_voltage_source_direction/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/09_voltage_source_direction/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/09_voltage_source_direction/run.py}
+
+\subsection{Sign convention}
+
+For \code{V1 0 out Vin}, the source voltage is \(v(0)-v(out)\). Since ground is
+zero, the voltage constraint is
+
+\begin{equation}
+    -v_{out} - V_{in} = 0.
+\end{equation}
+
+The KCL equation at \code{out} is
+
+\begin{equation}
+    \frac{v_{out}}{R} - i_{V1} = 0,
+\end{equation}
+
+because the branch current \(i_{V1}\) is defined from ground to \code{out}. With
+\(V_{in}=5\), \ngspice{} reports \(v(out)=-5\,\mathrm{V}\), which is exactly the
+source orientation encoded by the netlist.
+
+\section{Example 7: Floating Capacitor}
+\label{sec:ex-floating-capacitor}
+
+This example places the capacitor between two non-ground nodes. It demonstrates
+that the capacitor derivative contributes to both KCL equations with opposite
+signs.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/10_floating_capacitor/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/10_floating_capacitor/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/10_floating_capacitor/run.py}
+
+\subsection{Residual structure}
+
+The key capacitor current is
+
+\begin{equation}
+    i_C = C\frac{d}{dt}\left(v_{in}-v_{out}\right).
+\end{equation}
+
+Therefore the two KCL residuals contain \(+i_C\) at \code{in} and \(-i_C\) at
+\code{out}. This is a useful conservation check for dynamic two-terminal
+elements.
+
+\section{Example 8: RL Branch-Current Formulation}
+\label{sec:ex-rl-branch-current}
+
+Inductors are represented with branch-current unknowns in both time and Laplace
+domains. This keeps the formulation aligned with SPICE-style MNA.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/05_rl_branch_current/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/05_rl_branch_current/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/05_rl_branch_current/run.py}
+
+\subsection{Inductor equation}
+
+The time-domain branch equation is
+
+\begin{equation}
+    v_{in} - v_{out} - L\frac{d i_{L1}}{dt} = 0.
+\end{equation}
+
+In Laplace domain the same relation becomes
+
+\begin{equation}
+    v_{in} - v_{out} - sL\,i_{L1} = 0.
+\end{equation}
+
+The branch current \(i_{L1}\) is part of the unknown vector. This is the same
+principle used for voltage sources and controlled voltage sources.
+
+\section{Example 9: RL Descriptor Form}
+\label{sec:ex-rl-descriptor}
+
+This variant connects the inductor from \code{out} to ground and shows how the
+inductor derivative appears in the descriptor matrix.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/11_rl_descriptor/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/11_rl_descriptor/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/11_rl_descriptor/run.py}
+
+\subsection{Descriptor contribution}
+
+For the unknown vector
+
+\begin{equation}
+    x =
+    \begin{bmatrix}
+        v_{in}(t) \\
+        v_{out}(t) \\
+        i_{V1}(t) \\
+        i_{L1}(t)
+    \end{bmatrix},
+\end{equation}
+
+the inductor equation contributes a dynamic coefficient \(-L\) in the row for
+\code{L1} and the column for \(\dot{i}_{L1}\). The descriptor form is therefore
+the natural time-domain matrix representation for this circuit.
+
+\section{Example 10: RLC Low-Pass}
+\label{sec:ex-rlc-lowpass}
+
+This example combines a resistor, an inductor branch current, and a capacitor
+voltage derivative in one circuit.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/06_rlc_lowpass/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/06_rlc_lowpass/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/06_rlc_lowpass/run.py}
+
+\subsection{Mixed dynamic structure}
+
+The residual system contains both dynamic patterns:
+
+\begin{itemize}[noitemsep]
+    \item the capacitor contributes \(C\,d v_{out}/dt\) to the KCL equation at
+          \code{out};
+    \item the inductor contributes the branch equation
+          \(v_{n1}-v_{out}-L\,d i_{L1}/dt=0\).
+\end{itemize}
+
+In time domain, use descriptor extraction. In Laplace domain, the same example
+has a classical \(A(s)x=b\) matrix.
+
+\section{Example 11: Sinusoidal Voltage Source}
+\label{sec:ex-sine-voltage}
+
+This example shows a symbolic sinusoidal voltage source in time domain.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/12_sine_voltage_source/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/12_sine_voltage_source/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/12_sine_voltage_source/run.py}
+
+\subsection{Source expression}
+
+The source
+
+\begin{lstlisting}[style=spice]
+SIN(0 Vm omega)
+\end{lstlisting}
+
+is represented as
+
+\begin{equation}
+    V_m\sin(\omega t).
+\end{equation}
+
+The voltage-source residual is therefore
+
+\begin{equation}
+    v_{in}(t) - V_m\sin(\omega t) = 0.
+\end{equation}
+
+\section{Example 12: Sinusoidal Current Source}
+\label{sec:ex-sine-current}
+
+The current-source version demonstrates that the same source expression is
+inserted into KCL using SPICE current direction.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/13_sine_current_source/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/13_sine_current_source/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/13_sine_current_source/run.py}
+
+\subsection{KCL contribution}
+
+For \code{I1 out 0 SIN(0 Im omega)}, the KCL residual at \code{out} includes
+
+\begin{equation}
+    I_m\sin(\omega t) + \frac{v_{out}}{R}
+        + C\frac{d v_{out}}{dt} = 0.
+\end{equation}
+
+The positive sign on the source term follows directly from the current direction
+from \code{out} to ground.
+
+\section{Example 13: PULSE Source}
+\label{sec:ex-pulse}
+
+The PULSE source is expanded into a symbolic \sympy{} \code{Piecewise}
+expression.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/14_pulse_source/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/14_pulse_source/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/14_pulse_source/run.py}
+
+\subsection{Timing parameters}
+
+The example uses the supported seven-argument source form:
+
+\begin{lstlisting}[style=spice]
+PULSE(0 Vh 0 tr tf ton T)
+\end{lstlisting}
+
+The duty-related timing is explicit: rise time, fall time, on time, and period
+are all supplied. \project{} keeps those symbols exact and builds the resulting
+piecewise source expression.
+
+\section{Example 14: PWL Source}
+\label{sec:ex-pwl}
+
+Piecewise-linear sources are also converted to \sympy{} \code{Piecewise}
+expressions.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/15_pwl_source/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/15_pwl_source/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/15_pwl_source/run.py}
+
+\subsection{Exact time points}
+
+The source
+
+\begin{lstlisting}[style=spice]
+PWL(0 0 1m 5 2m 0)
+\end{lstlisting}
+
+uses exact rational time values internally: \(1\,\mathrm{ms}=1/1000\) and
+\(2\,\mathrm{ms}=1/500\). This is important for stable symbolic output and JSON
+serialization.
+
+\section{Example 15: Dependent Sources}
+\label{sec:ex-dependent-sources}
+
+This example combines all four dependent source families in one circuit:
+VCVS, VCCS, CCCS, and CCVS.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/07_dependent_sources/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/07_dependent_sources/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/07_dependent_sources/run.py}
+
+\subsection{Device roles}
+
+\begin{longtable}{p{0.16\textwidth}p{0.24\textwidth}p{0.50\textwidth}}
+\toprule
+Type & Example & Role \\
+\midrule
+VCVS & \code{E1} & Adds its own branch current and a controlled voltage
+constraint. \\
+VCCS & \code{G1} & Adds a controlled current contribution to KCL without a new
+branch current. \\
+CCCS & \code{F1} & Uses the existing current through \code{Vsense} as the control
+current. \\
+CCVS & \code{H1} & Adds its own branch current and uses \code{Vsense} as the
+control current. \\
+\bottomrule
+\end{longtable}
+
+Current-controlled sources require a control branch. The examples use a
+zero-volt voltage source \code{Vsense}, which is the standard SPICE technique
+for measuring a branch current.
+
+\section{Example 16: Parser RVI Details}
+\label{sec:ex-parser-rvi}
+
+This example demonstrates parser behavior for full-line comments, ground aliases,
+numeric values, and \code{DC(...)} source syntax.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/16_parser_rvi_comments_ground_alias/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/16_parser_rvi_comments_ground_alias/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/16_parser_rvi_comments_ground_alias/run.py}
+
+\subsection{Notes}
+
+The parser ignores full-line comments beginning with \code{*}. Ground aliases
+such as \code{gnd} normalize to the internal ground node. The resistor value
+\code{1k} is parsed as the exact integer \(1000\), while \code{DC(Iload)} is
+reduced to the symbolic source value \(Iload\).
+
+\section{Example 17: Parser C/L Values}
+\label{sec:ex-parser-cl}
+
+This parser-oriented example checks capacitor and inductor lines.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/17_parser_cl_values/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/17_parser_cl_values/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/17_parser_cl_values/run.py}
+
+\subsection{Notes}
+
+The \project{} netlist is intentionally minimal because it mirrors the parser
+unit test. The \ngspice{} wrapper adds an excitation source and a large leak
+resistor so that the external simulator has a nonsingular operating point before
+AC analysis. The symbolic \project{} example does not need that wrapper element.
+
+\section{Example 18: Numeric Diode Model Values}
+\label{sec:ex-diode-model-values}
+
+This example focuses on diode model parsing rather than circuit solving.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/18_diode_model_values/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/18_diode_model_values/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/18_diode_model_values/run.py}
+
+\subsection{Exact values}
+
+The parser converts the model
+
+\begin{lstlisting}[style=spice]
+.model Ddefault D(Is=1e-14 n=1 Vt=25.85m)
+\end{lstlisting}
+
+into exact \sympy{} numbers:
+
+\begin{equation}
+    I_s = \frac{1}{10^{14}}, \quad n = 1, \quad V_t = \frac{517}{20000}.
+\end{equation}
+
+\section{Example 19: Dependent Source Parser Bundle}
+\label{sec:ex-dependent-parser-bundle}
+
+This parser bundle contains all four dependent source types without the
+additional elements needed for a complete circuit solve.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/19_dependent_source_parser_bundle/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/19_dependent_source_parser_bundle/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/19_dependent_source_parser_bundle/run.py}
+
+\subsection{Notes}
+
+The \project{} netlist demonstrates typed parsing only. The \ngspice{} wrapper
+adds independent sources and loads so the dependent devices can be evaluated in a
+runnable operating-point analysis.
+
+\section{Example 20: Symbolic Diode Model Parser}
+\label{sec:ex-diode-parser-symbolic}
+
+This example contains a diode and symbolic diode model without the surrounding
+source and resistor used in the full nonlinear example.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/20_diode_parser_symbolic_model/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/20_diode_parser_symbolic_model/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/20_diode_parser_symbolic_model/run.py}
+
+\subsection{Residual}
+
+With only the diode connected from \code{out} to ground, the KCL residual is the
+diode current itself:
+
+\begin{equation}
+    I_s\left(\exp\!\left(\frac{v_{out}}{nV_t}\right)-1\right)=0.
+\end{equation}
+
+\section{Example 21: Single-Capacitor Frequency Substitution}
+\label{sec:ex-single-cap-frequency}
+
+This example isolates the Laplace-domain capacitor term and frequency
+substitution machinery.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/21_single_capacitor_frequency/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/21_single_capacitor_frequency/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/21_single_capacitor_frequency/run.py}
+
+\subsection{Frequency substitution}
+
+In Laplace domain the residual is
+
+\begin{equation}
+    sC\,v_{out} = 0.
+\end{equation}
+
+For \(f=50\,\mathrm{Hz}\), \project{} substitutes
+
+\begin{equation}
+    s = j2\pi f = 100j\pi.
+\end{equation}
+
+The \ngspice{} wrapper adds a current excitation and a large leak resistor only
+to make the AC analysis runnable.
+
+\section{Example 22: Missing Numeric Parameters}
+\label{sec:ex-missing-params}
+
+Numeric substitution is strict: every symbolic parameter present in the residual
+system must be provided.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/22_numeric_substitution_missing_params/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/22_numeric_substitution_missing_params/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/22_numeric_substitution_missing_params/run.py}
+
+\subsection{Expected error}
+
+The script intentionally calls \code{apply\_numeric\_substitutions} with no
+parameters. The expected result is \code{MissingParameterError}, reporting
+\code{C}, \code{R}, and \code{Vin}.
+
+\section{Example 23: Linear Extraction Rejects Diode}
+\label{sec:ex-linear-rejects-diode}
+
+This example repeats the diode circuit but focuses only on the expected failure
+mode of classical linear extraction.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/23_linear_extraction_rejects_diode/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/23_linear_extraction_rejects_diode/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/23_linear_extraction_rejects_diode/run.py}
+
+\subsection{Expected error}
+
+The residual system is valid but nonlinear. Calling
+\code{extract\_linear\_system} raises \code{NonlinearSystemError}. This explicit
+failure prevents accidental use of a linear matrix representation for a
+nonlinear circuit.
+
+\section{Example 24: Descriptor Rejects Laplace Domain}
+\label{sec:ex-descriptor-rejects-laplace}
+
+Descriptor extraction is defined for time-domain systems only.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/24_descriptor_rejects_laplace/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/24_descriptor_rejects_laplace/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/24_descriptor_rejects_laplace/run.py}
+
+\subsection{Expected error}
+
+The Laplace-domain residual \(sC\,v_{out}=0\) is algebraic. Requesting
+descriptor extraction from that system raises \code{NonlinearSystemError} with a
+message explaining that descriptor form is available only for time-domain
+systems.
+
+\section{Example 25: Case-Preserved Component Name}
+\label{sec:ex-case-preserved}
+
+Component type dispatch is case-insensitive, but the original component name is
+preserved.
+
+\subsection{dnipro netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/25_case_preserved_component_name/dnipro.cir}
+
+\subsection{ngspice template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/25_case_preserved_component_name/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/25_case_preserved_component_name/run.py}
+
+\subsection{Notes}
+
+The line \code{r\_load in out Rload} is parsed as a resistor, while the component
+name remains \code{r\_load}. This matters for stable reporting and for preserving
+the user's naming choices.
+
+\section{Example 26: Expected Parser Errors}
+\label{sec:ex-invalid-examples}
+
+The final runnable example demonstrates unsupported or malformed syntax. The
+\code{dnipro.cir} file is intentionally valid; the invalid cases are held inside
+the Python script so that the example itself can run successfully.
+
+\subsection{dnipro placeholder netlist}
+
+\lstinputlisting[style=spice]{../examples/user_guide/26_invalid_examples_expected_errors/dnipro.cir}
+
+\subsection{ngspice placeholder template}
+
+\lstinputlisting[style=spice]{../examples/user_guide/26_invalid_examples_expected_errors/ngspice.cir}
+
+\subsection{Python script}
+
+\lstinputlisting[style=python]{../examples/user_guide/26_invalid_examples_expected_errors/run.py}
+
+\subsection{Rejected syntax}
+
+The rejected cases include invalid component names, unsupported arithmetic in
+values, comma-separated source syntax, unsupported directives, malformed diode
+lines, and incomplete diode model definitions. These are parser/API boundaries,
+not simulator failures.
+
+\appendix
+
+\section{Complete Runnable Example Catalog}
+\label{app:catalog}
+
+All examples below are present in \code{examples/user\_guide}. Each directory
+has the same three-file structure:
+
+\begin{itemize}[noitemsep]
+    \item \code{dnipro.cir};
+    \item \code{ngspice.cir};
+    \item \code{run.py}.
+\end{itemize}
+
+\begingroup
+\scriptsize
+\begin{longtable}{p{0.08\textwidth}p{0.38\textwidth}p{0.44\textwidth}}
+\toprule
+ID & Directory & Demonstrated feature \\
+\midrule
+\endfirsthead
+\toprule
+ID & Directory & Demonstrated feature \\
+\midrule
+\endhead
+01 & \path{01_voltage_divider} & Basic resistor divider, residuals, and
+classical \(A x=b\). \\
+02 & \path{02_current_source_direction} & SPICE current-source direction and
+sign of node voltage. \\
+03 & \path{03_rc_time_descriptor} & RC time-domain residuals and
+\(Gx+C\dot{x}=b\). \\
+04 & \path{04_rc_laplace} & RC Laplace-domain \(A(s)x=b\) and frequency
+substitution. \\
+05 & \path{05_rl_branch_current} & Inductor branch-current formulation in
+time and Laplace domains. \\
+06 & \path{06_rlc_lowpass} & Mixed RLC dynamics with capacitor derivative and
+inductor branch current. \\
+07 & \path{07_dependent_sources} & VCVS, VCCS, CCCS, and CCVS in a complete
+circuit. \\
+08 & \path{08_diode_nonlinear} & Nonlinear diode residual and expected
+linear-extraction rejection. \\
+09 & \path{09_voltage_source_direction} & Reversed voltage-source terminals
+and sign convention. \\
+10 & \path{10_floating_capacitor} & Capacitor derivative contribution to two
+non-ground nodes. \\
+11 & \path{11_rl_descriptor} & Descriptor matrix for an inductor to ground. \\
+12 & \path{12_sine_voltage_source} & Symbolic sinusoidal voltage source. \\
+13 & \path{13_sine_current_source} & Symbolic sinusoidal current source and
+KCL sign. \\
+14 & \path{14_pulse_source} & PULSE source expansion to symbolic
+\code{Piecewise}. \\
+15 & \path{15_pwl_source} & PWL source expansion with exact rational times. \\
+16 & \path{16_parser_rvi_comments_ground_alias} & Comments, ground aliases,
+numeric values, and \code{DC(...)} syntax. \\
+17 & \path{17_parser_cl_values} & Capacitor and inductor parser values. \\
+18 & \path{18_diode_model_values} & Exact numeric parsing of diode model
+parameters. \\
+19 & \path{19_dependent_source_parser_bundle} & Parser bundle for E, G, F,
+and H source types. \\
+20 & \path{20_diode_parser_symbolic_model} & Symbolic diode model parsing
+and isolated diode residual. \\
+21 & \path{21_single_capacitor_frequency} & Isolated capacitor and
+\(s=j2\pi f\) substitution. \\
+22 & \path{22_numeric_substitution_missing_params} & Strict missing-parameter
+error. \\
+23 & \path{23_linear_extraction_rejects_diode} & Expected nonlinear rejection
+from linear extraction. \\
+24 & \path{24_descriptor_rejects_laplace} & Expected descriptor rejection in
+Laplace domain. \\
+25 & \path{25_case_preserved_component_name} & Case-insensitive component
+type with preserved original name. \\
+26 & \path{26_invalid_examples_expected_errors} & Expected parser and model
+errors for invalid syntax. \\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\section{Verification Commands}
+\label{app:verification}
+
+The example catalog can be checked from the repository root with:
+
+\begin{lstlisting}[style=shell]
+for f in examples/user_guide/*/run.py; do
+  /home/konst/Documents/Projects/venv/bin/python "$f"
+done
+\end{lstlisting}
+
+\begin{lstlisting}[style=shell]
+for f in examples/user_guide/*/ngspice.cir; do
+  ngspice -b "$f"
+done
+\end{lstlisting}
+
+\begin{lstlisting}[style=shell]
+/home/konst/Documents/Projects/venv/bin/ruff check examples/user_guide
+\end{lstlisting}
+
+\end{document}
